@@ -1,6 +1,6 @@
 package com.hermes.broker.agent.application.service;
 
-import com.hermes.broker.agent.domain.AgentSkill;
+import com.hermes.broker.agent.adapter.out.persistence.AgentSkillJpaEntity;
 import com.hermes.broker.agent.adapter.out.persistence.AgentSkillJpaRepository;
 import com.hermes.broker.summary.adapter.out.persistence.DailySummaryJpaRepository;
 import com.hermes.broker.trading.adapter.out.persistence.TradingLogJpaRepository;
@@ -27,9 +27,9 @@ public class AgentResetService {
         dailySummaryRepository.deleteAllInBatch();
 
         // 2. 스킬 초기화 (기존 스킬 비활성화 후 v1 생성)
-        agentSkillRepository.findAll().forEach(AgentSkill::deactivate);
+        agentSkillRepository.findAll().forEach(AgentSkillJpaEntity::deactivate);
         
-        AgentSkill initialSkill = AgentSkill.builder()
+        AgentSkillJpaEntity initialSkill = AgentSkillJpaEntity.builder()
                 .version(1)
                 .description("Initial default skill after reset")
                 .isActive(true)
