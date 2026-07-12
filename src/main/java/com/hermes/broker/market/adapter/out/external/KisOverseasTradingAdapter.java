@@ -73,7 +73,6 @@ public class KisOverseasTradingAdapter implements MarketTradingPort {
         
         return CurrentPriceDto.builder()
                 .stockCode(stockCode)
-                .marketType(MarketType.OVERSEAS)
                 .currentPrice(new BigDecimal(currentPriceStr))
                 .build();
     }
@@ -137,8 +136,8 @@ public class KisOverseasTradingAdapter implements MarketTradingPort {
         
         return PortfolioDto.builder()
                 .totalAsset(BigDecimal.ZERO)
-                .cashBalance(BigDecimal.ZERO)
-                .stockBalance(BigDecimal.ZERO)
+                .availableCash(BigDecimal.ZERO)
+                .holdings(java.util.Collections.emptyList())
                 .build();
     }
 }
