@@ -10,6 +10,8 @@ import org.springframework.web.client.RestClient;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.LocalTime;
+import java.time.DayOfWeek;
 import java.util.List;
 import java.util.Map;
 
@@ -32,11 +34,11 @@ public class MarketTimeValidator {
     public boolean isMarketOpen() {
         if (baseUrl.contains("openapivts")) {
             log.info("Mock environment detected. Skipping KIS holiday API check.");
-            java.time.LocalTime now = java.time.LocalTime.now();
-            java.time.LocalTime open = java.time.LocalTime.of(9, 0);
-            java.time.LocalTime close = java.time.LocalTime.of(15, 30);
-            java.time.DayOfWeek day = LocalDate.now().getDayOfWeek();
-            if (day == java.time.DayOfWeek.SATURDAY || day == java.time.DayOfWeek.SUNDAY) {
+            LocalTime now = LocalTime.now();
+            LocalTime open = LocalTime.of(9, 0);
+            LocalTime close = LocalTime.of(15, 30);
+            DayOfWeek day = LocalDate.now().getDayOfWeek();
+            if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
                 return false;
             }
             return !now.isBefore(open) && !now.isAfter(close);
@@ -70,9 +72,9 @@ public class MarketTimeValidator {
                     }
                     
                     // 영업일이라면 현재 시간이 09:00 ~ 15:30 사이인지 추가 확인
-                    java.time.LocalTime now = java.time.LocalTime.now();
-                    java.time.LocalTime open = java.time.LocalTime.of(9, 0);
-                    java.time.LocalTime close = java.time.LocalTime.of(15, 30);
+                    LocalTime now = LocalTime.now();
+                    LocalTime open = LocalTime.of(9, 0);
+                    LocalTime close = LocalTime.of(15, 30);
                     return !now.isBefore(open) && !now.isAfter(close);
                 }
             }

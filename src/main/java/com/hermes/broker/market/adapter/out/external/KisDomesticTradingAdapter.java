@@ -54,7 +54,6 @@ public class KisDomesticTradingAdapter implements MarketTradingPort {
 
     @Override
     public CurrentPriceDto getCurrentPrice(String stockCode) {
-        timeValidator.validateMarketOpen(); // 장 운영 시간 검증
         String trId = "FHKST01010100"; // 국내주식 기본시세
         
         try {
