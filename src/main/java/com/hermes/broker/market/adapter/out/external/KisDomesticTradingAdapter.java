@@ -28,6 +28,12 @@ public class KisDomesticTradingAdapter implements MarketTradingPort {
 
     private final RestClient.Builder restClientBuilder;
     private final KisHeaderProvider headerProvider;
+
+    @Override
+    public boolean supports(com.hermes.broker.trading.domain.MarketType marketType) {
+        return marketType == com.hermes.broker.trading.domain.MarketType.DOMESTIC;
+    }
+
     private final MarketTimeValidator timeValidator;
 
     @Value("${kis.api.base-url}")

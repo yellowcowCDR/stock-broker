@@ -6,6 +6,7 @@ import com.hermes.broker.trading.dto.OrderResponseDto;
 import com.hermes.broker.market.dto.PortfolioDto;
 
 public interface MarketTradingPort {
+    boolean supports(com.hermes.broker.trading.domain.MarketType marketType);
     CurrentPriceDto getCurrentPrice(String stockCode);
     OrderResponseDto placeOrder(OrderRequestDto orderRequest);
     PortfolioDto getPortfolio();

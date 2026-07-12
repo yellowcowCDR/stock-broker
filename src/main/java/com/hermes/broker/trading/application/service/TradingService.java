@@ -25,7 +25,7 @@ import java.util.List;
 public class TradingService implements AgentTradingUseCase {
 
     private final TradingLogRepository tradingLogRepository;
-    private final MarketTradingPort marketTradingPort;
+    private final java.util.List<MarketTradingPort> marketTradingPorts;
     private final MarketTimeValidator timeValidator;
 
     @Override
@@ -47,7 +47,14 @@ public class TradingService implements AgentTradingUseCase {
                 
         tradingLogRepository.save(logEntry);
         
-        OrderResponseDto response = marketTradingPort.placeOrder(request);
+        MarketType actualMarketType = request.getMarketType() != null ? request.getMarketType() : MarketType.DOMESTIC;
+        
+        MarketTradingPort adapter = marketTradingPorts.stream()
+                .filter(port -> port.supports(actualMarketType))
+                .findFirst()
+                .orElseThrow(() -> new UnsupportedOperationException("Unsupported market type: " + actualMarketType));
+
+        OrderResponseDto response = adapter.placeOrder(request);
         
         if (!response.isSuccess()) {
             logEntry.updateStatus(OrderStatus.FAILED);

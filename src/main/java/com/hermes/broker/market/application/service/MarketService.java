@@ -13,15 +13,16 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class MarketService implements GetMarketPriceUseCase {
 
-    private final MarketTradingPort marketTradingPort;
+    private final java.util.List<MarketTradingPort> marketTradingPorts;
     private final MarketTimeValidator timeValidator;
 
     @Override
     public CurrentPriceDto getPrice(String stockCode, MarketType marketType) {
-        if (marketType == MarketType.OVERSEAS) {
-            throw new UnsupportedOperationException("Overseas market is not fully implemented yet.");
-        }
+        MarketTradingPort adapter = marketTradingPorts.stream()
+                .filter(port -> port.supports(marketType))
+                .findFirst()
+                .orElseThrow(() -> new UnsupportedOperationException("Unsupported market type: " + marketType));
 
-        return marketTradingPort.getCurrentPrice(stockCode);
+        return adapter.getCurrentPrice(stockCode);
     }
 }
