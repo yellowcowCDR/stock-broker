@@ -3,6 +3,7 @@ package com.hermes.broker.market.application.service;
 import com.hermes.broker.market.application.port.in.GetMarketPriceUseCase;
 import com.hermes.broker.market.application.port.out.MarketTradingPort;
 import com.hermes.broker.market.dto.CurrentPriceDto;
+import com.hermes.broker.market.dto.TechnicalIndicators;
 import com.hermes.broker.trading.domain.MarketType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
