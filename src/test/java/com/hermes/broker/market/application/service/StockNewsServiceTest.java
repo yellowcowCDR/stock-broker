@@ -10,6 +10,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
 class StockNewsServiceTest {
@@ -19,6 +21,12 @@ class StockNewsServiceTest {
 
     @Test
     void getNews_returnsMockedNews() {
+        given(port.searchNews(anyString())).willReturn(List.of(
+                new StockNews("Title 1", "Content 1", NewsSentiment.POSITIVE, null),
+                new StockNews("Title 2", "Content 2", NewsSentiment.NEGATIVE, null),
+                new StockNews("Title 3", "Content 3", NewsSentiment.NEUTRAL, null)
+        ));
+
         List<StockNews> news = service.getNews("005930");
 
         assertThat(news).hasSize(3);
