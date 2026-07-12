@@ -26,7 +26,7 @@ public class DailySummaryService implements GenerateDailySummaryUseCase {
 
     private final TradingLogRepository tradingLogRepository;
     private final DailySummaryRepository dailySummaryRepository;
-    private final MarketTradingPort marketTradingPort;
+    private final List<MarketTradingPort> marketTradingPorts;
 
     @Override
     @Transactional
@@ -60,11 +60,15 @@ public class DailySummaryService implements GenerateDailySummaryUseCase {
         }
 
         BigDecimal closingAsset = BigDecimal.ZERO;
-        try {
-            PortfolioDto portfolio = marketTradingPort.getPortfolio();
-            closingAsset = portfolio.getTotalAsset();
-        } catch (Exception e) {
-            log.error("Failed to fetch portfolio during daily summary. Asset will be recorded as 0.", e);
+        for (MarketTradingPort port : marketTradingPorts) {
+            try {
+                PortfolioDto portfolio = port.getPortfolio();
+                if (portfolio != null && portfolio.getTotalAsset() != null) {
+                    closingAsset = closingAsset.add(portfolio.getTotalAsset());
+                }
+            } catch (Exception e) {
+                log.error("Failed to fetch portfolio during daily summary. Asset will be recorded as 0 for this port.", e);
+            }
         }
 
         BigDecimal dailyReturnRate = BigDecimal.ZERO;

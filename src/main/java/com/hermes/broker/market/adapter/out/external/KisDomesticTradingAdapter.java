@@ -5,6 +5,7 @@ import com.hermes.broker.market.dto.CurrentPriceDto;
 import com.hermes.broker.trading.dto.OrderRequestDto;
 import com.hermes.broker.trading.dto.OrderResponseDto;
 import com.hermes.broker.market.dto.PortfolioDto;
+import com.hermes.broker.trading.domain.MarketType;
 import com.hermes.broker.market.adapter.out.external.KisHeaderProvider;
 import com.hermes.broker.market.application.port.out.MarketTradingPort;
 import com.hermes.broker.market.application.service.MarketTimeValidator;
@@ -30,8 +31,8 @@ public class KisDomesticTradingAdapter implements MarketTradingPort {
     private final KisHeaderProvider headerProvider;
 
     @Override
-    public boolean supports(com.hermes.broker.trading.domain.MarketType marketType) {
-        return marketType == com.hermes.broker.trading.domain.MarketType.DOMESTIC;
+    public boolean supports(MarketType marketType) {
+        return marketType == MarketType.DOMESTIC;
     }
 
     private final MarketTimeValidator timeValidator;

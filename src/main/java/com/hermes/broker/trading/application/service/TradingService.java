@@ -25,7 +25,7 @@ import java.util.List;
 public class TradingService implements AgentTradingUseCase {
 
     private final TradingLogRepository tradingLogRepository;
-    private final java.util.List<MarketTradingPort> marketTradingPorts;
+    private final List<MarketTradingPort> marketTradingPorts;
     private final MarketTimeValidator timeValidator;
 
     @Override
