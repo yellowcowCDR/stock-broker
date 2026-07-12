@@ -30,6 +30,18 @@ public class MarketTimeValidator {
      */
     @Cacheable(value = "marketStatusCache", key = "'domestic'")
     public boolean isMarketOpen() {
+        if (baseUrl.contains("openapivts")) {
+            log.info("Mock environment detected. Skipping KIS holiday API check.");
+            java.time.LocalTime now = java.time.LocalTime.now();
+            java.time.LocalTime open = java.time.LocalTime.of(9, 0);
+            java.time.LocalTime close = java.time.LocalTime.of(15, 30);
+            java.time.DayOfWeek day = LocalDate.now().getDayOfWeek();
+            if (day == java.time.DayOfWeek.SATURDAY || day == java.time.DayOfWeek.SUNDAY) {
+                return false;
+            }
+            return !now.isBefore(open) && !now.isAfter(close);
+        }
+
         log.info("Fetching market status from KIS API (Cache Miss)");
         String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String trId = "CTCA0903R"; // 국내휴장일조회 (또는 사용하는 KIS 휴장일 API TR ID)
