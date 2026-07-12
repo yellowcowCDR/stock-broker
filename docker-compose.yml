@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: hermes-broker
-    image: ghcr.io/choedaelyeon/stock-trader:latest
+    image: ghcr.io/yellowcowcdr/stock-broker:latest
     ports:
       - "8080:8080"
     # 절대 경로를 사용하시거나, docker-compose.yml과 같은 폴더에 있다면 아래처럼 상대 경로(.env)를 사용하셔도 무방합니다.
