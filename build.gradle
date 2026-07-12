@@ -40,7 +40,6 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'
     
-    // Guava for RateLimiter (if still needed, though LLM is removed, Guava is fine. I'll keep it or remove it. I'll remove it since no LLM)
     // Spring Cache & Caffeine for MarketTimeValidator caching
     implementation 'org.springframework.boot:spring-boot-starter-cache'
     implementation 'com.github.ben-manes.caffeine:caffeine'
