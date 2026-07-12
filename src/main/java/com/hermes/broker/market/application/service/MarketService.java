@@ -18,8 +18,6 @@ public class MarketService implements GetMarketPriceUseCase {
 
     @Override
     public CurrentPriceDto getPrice(String stockCode, MarketType marketType) {
-        timeValidator.validateMarketOpen();
-
         if (marketType == MarketType.OVERSEAS) {
             throw new UnsupportedOperationException("Overseas market is not fully implemented yet.");
         }
