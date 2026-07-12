@@ -24,6 +24,15 @@ logging:
   level:
     com.hermes.broker: DEBUG
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: always
+
 spring:
   cache:
     type: caffeine
