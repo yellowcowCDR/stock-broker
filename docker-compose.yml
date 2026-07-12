@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  hermes-broker:
+  stock-broker:
     build: 
       context: .
       dockerfile: Dockerfile
-    container_name: hermes-broker
+    container_name: stock-broker
     image: ghcr.io/yellowcowcdr/stock-broker:latest
     ports:
       - "8080:8080"
