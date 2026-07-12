@@ -1,0 +1,6 @@
+kis:
+  api:
+    base-url: https://openapi.koreainvestment.com:9443
+    app-key: ${KIS_PROD_APP_KEY:your_prod_app_key_here}
+    app-secret: ${KIS_PROD_APP_SECRET:your_prod_app_secret_here}
+    account-no: ${KIS_PROD_ACCOUNT_NO:12345678-01}

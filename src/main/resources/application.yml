@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: hermes-trading-broker
+  profiles:
+    active: mock
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/hermes}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+logging:
+  level:
+    com.hermes.broker: DEBUG
+
+spring:
+  cache:
+    type: caffeine
+    caffeine:
+      spec: expireAfterWrite=30m

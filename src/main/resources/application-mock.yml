@@ -1,0 +1,16 @@
+kis:
+  api:
+    base-url: https://openapivts.koreainvestment.com:29443
+    app-key: ${KIS_MOCK_APP_KEY:your_mock_app_key_here}
+    app-secret: ${KIS_MOCK_APP_SECRET:your_mock_app_secret_here}
+    account-no: ${KIS_MOCK_ACCOUNT_NO:12345678-01}
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: true
+    open-in-view: false
