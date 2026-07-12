@@ -12,4 +12,5 @@ public class CurrentPriceDto {
     private BigDecimal currentPrice;
     private BigDecimal changeRate;
     private Long accumulatedVolume;
+    private TechnicalIndicators technicalIndicators;
 }

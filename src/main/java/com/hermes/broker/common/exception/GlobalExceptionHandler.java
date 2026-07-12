@@ -22,7 +22,12 @@ public class GlobalExceptionHandler {
 
     private final ObjectMapper objectMapper;
 
-    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
+    @ExceptionHandler({
+            IllegalArgumentException.class,
+            IllegalStateException.class,
+            InvalidStockCodeException.class,
+            InvalidAgentSkillParametersException.class
+    })
     public ResponseEntity<ErrorResponse> handleBadRequest(Exception ex, HttpServletRequest request) {
         log.warn("Bad request error: {}", ex.getMessage());
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI());
@@ -35,6 +40,12 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining(", "));
         log.warn("Validation error: {}", message);
         return buildErrorResponse(HttpStatus.BAD_REQUEST, message, request.getRequestURI());
+    }
+
+    @ExceptionHandler(ActiveAgentSkillNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNotFoundException(Exception ex, HttpServletRequest request) {
+        log.warn("Not found error: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI());
     }
 
     @ExceptionHandler(RestClientResponseException.class)
