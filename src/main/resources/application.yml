@@ -41,16 +41,7 @@ management:
 springdoc:
   show-actuator: true
 
-trading:
-  scheduler:
-    enabled: ${TRADING_SCHEDULER_ENABLED:false}
-  risk:
-    live-trading-enabled: ${LIVE_TRADING_ENABLED:false}
-    daily-max-loss-rate: ${DAILY_MAX_LOSS_RATE:0.03}
-    max-order-amount: ${MAX_ORDER_AMOUNT:100000}
-    max-daily-trades: ${MAX_DAILY_TRADES:5}
-    max-position-count: ${MAX_POSITION_COUNT:5}
-    allow-averaging-down: ${ALLOW_AVERAGING_DOWN:false}
+
 
 external-api:
   fail-fast: ${EXTERNAL_API_FAIL_FAST:false}
@@ -72,3 +63,24 @@ external-api:
     default-display: ${NAVER_NEWS_DEFAULT_DISPLAY:20}
     max-display: ${NAVER_NEWS_MAX_DISPLAY:100}
     cache-ttl: ${NAVER_NEWS_CACHE_TTL:10m}
+
+trading:
+  risk:
+    daily-max-loss-rate: ${DAILY_MAX_LOSS_RATE:0.03}
+    max-order-amount: ${MAX_ORDER_AMOUNT:100000}
+    max-daily-trades: ${MAX_DAILY_TRADES:5}
+    max-position-count: ${MAX_POSITION_COUNT:5}
+    max-sector-exposure-rate: ${MAX_SECTOR_EXPOSURE_RATE:0.40}
+    max-stock-exposure-rate: ${MAX_STOCK_EXPOSURE_RATE:0.25}
+    allow-averaging-down: ${ALLOW_AVERAGING_DOWN:false}
+    allow-margin-trading: ${ALLOW_MARGIN_TRADING:false}
+    live-trading-enabled: ${LIVE_TRADING_ENABLED:false}
+    kill-switch-enabled: ${KILL_SWITCH_ENABLED:false}
+  strategy:
+    minimum-trade-sample: ${MINIMUM_TRADE_SAMPLE:20}
+    minimum-evaluation-days: ${MINIMUM_EVALUATION_DAYS:10}
+    maximum-parameter-changes-per-upgrade: ${MAX_PARAMETER_CHANGES_PER_UPGRADE:2}
+    rollback-enabled: ${STRATEGY_ROLLBACK_ENABLED:true}
+    rollback-minimum-sample: ${ROLLBACK_MINIMUM_SAMPLE:10}
+    rollback-max-drawdown-increase-rate: ${ROLLBACK_MAX_DRAWDOWN_INCREASE_RATE:0.30}
+    rollback-performance-degradation-rate: ${ROLLBACK_PERFORMANCE_DEGRADATION_RATE:0.20}

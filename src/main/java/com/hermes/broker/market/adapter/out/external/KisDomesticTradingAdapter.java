@@ -22,10 +22,18 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import com.hermes.broker.trading.application.port.out.LoadAccountBalancePort;
+import com.hermes.broker.trading.application.port.out.LoadBuyingPowerPort;
+import com.hermes.broker.trading.application.port.out.LoadOpenOrdersPort;
+import com.hermes.broker.trading.application.port.out.LoadPortfolioPositionsPort;
+import com.hermes.broker.trading.domain.portfolio.AccountBalance;
+import com.hermes.broker.trading.domain.portfolio.OpenOrder;
+import com.hermes.broker.trading.domain.portfolio.PortfolioPosition;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class KisDomesticTradingAdapter implements MarketTradingPort {
+public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccountBalancePort, LoadBuyingPowerPort, LoadPortfolioPositionsPort, LoadOpenOrdersPort {
 
     private final RestClient.Builder restClientBuilder;
     private final KisHeaderProvider headerProvider;
@@ -189,5 +197,108 @@ public class KisDomesticTradingAdapter implements MarketTradingPort {
             log.error("Error occurred while fetching portfolio", e);
             throw new RuntimeException("Portfolio fetch failed", e);
         }
+    }
+
+    @Override
+    public AccountBalance loadBalance() {
+        String trId = "TTTC8434R"; // 주식 잔고조회
+        try {
+            Map response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/uapi/domestic-stock/v1/trading/inquire-balance")
+                            .queryParam("CANO", accountNo.split("-")[0])
+                            .queryParam("ACNT_PRDT_CD", accountNo.split("-")[1])
+                            .queryParam("AFHR_FLPR_YN", "N")
+                            .queryParam("OFL_YN", "")
+                            .queryParam("INQR_DVSN", "02")
+                            .queryParam("UNPR_DVSN", "01")
+                            .queryParam("FUND_STTL_ICLD_YN", "N")
+                            .queryParam("FNCG_AMT_AUTO_RDPT_YN", "N")
+                            .queryParam("PRCS_DVSN", "00")
+                            .queryParam("CTX_AREA_FK100", "")
+                            .queryParam("CTX_AREA_NK100", "")
+                            .build())
+                    .headers(headerProvider.createCommonHeaders(trId))
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response == null || !response.containsKey("output2")) {
+                throw new IllegalStateException("Failed to get balance");
+            }
+            List<Map<String, String>> output2 = (List<Map<String, String>>) response.get("output2");
+            Map<String, String> accountSummary = output2.get(0);
+            
+            BigDecimal totalAsset = new BigDecimal(accountSummary.get("tot_evlu_amt"));
+            BigDecimal cash = new BigDecimal(accountSummary.get("dnca_tot_amt")); // 예수금총액
+            BigDecimal evalAmt = new BigDecimal(accountSummary.get("scts_evlu_amt")); // 유가증권평가금액
+            BigDecimal pnl = new BigDecimal(accountSummary.get("evlu_pfls_smtl_amt")); // 평가손익합계금액
+
+            return new AccountBalance(totalAsset, cash, evalAmt, pnl);
+        } catch (Exception e) {
+            log.error("loadBalance error", e);
+            return new AccountBalance(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+    }
+
+    @Override
+    public BigDecimal loadBuyingPower() {
+        // 간이 구현: 예수금 반환
+        return loadBalance().cashAmount();
+    }
+
+    @Override
+    public List<PortfolioPosition> loadPositions() {
+        String trId = "TTTC8434R"; 
+        try {
+            Map response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/uapi/domestic-stock/v1/trading/inquire-balance")
+                            .queryParam("CANO", accountNo.split("-")[0])
+                            .queryParam("ACNT_PRDT_CD", accountNo.split("-")[1])
+                            .queryParam("AFHR_FLPR_YN", "N")
+                            .queryParam("OFL_YN", "")
+                            .queryParam("INQR_DVSN", "02")
+                            .queryParam("UNPR_DVSN", "01")
+                            .queryParam("FUND_STTL_ICLD_YN", "N")
+                            .queryParam("FNCG_AMT_AUTO_RDPT_YN", "N")
+                            .queryParam("PRCS_DVSN", "00")
+                            .queryParam("CTX_AREA_FK100", "")
+                            .queryParam("CTX_AREA_NK100", "")
+                            .build())
+                    .headers(headerProvider.createCommonHeaders(trId))
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response == null || !response.containsKey("output1")) {
+                return Collections.emptyList();
+            }
+
+            List<Map<String, String>> output1 = (List<Map<String, String>>) response.get("output1");
+            return output1.stream()
+                    .map(item -> new PortfolioPosition(
+                            item.get("pdno"),
+                            item.get("prdt_name"),
+                            MarketType.DOMESTIC,
+                            "UNKNOWN", // 업종(단순조회에서는 미제공)
+                            new BigDecimal(item.get("hldg_qty")), // 보유수량
+                            new BigDecimal(item.get("ord_psbl_qty")), // 주문가능수량
+                            new BigDecimal(item.get("pchs_avg_pric")),
+                            new BigDecimal(item.get("prpr")),
+                            new BigDecimal(item.get("evlu_amt")), // 평가금액
+                            new BigDecimal(item.get("evlu_pfls_amt")), // 평가손익금액
+                            new BigDecimal(item.get("evlu_pfls_rt")), // 평가손익율
+                            BigDecimal.ZERO // 비중은 Service에서 다시 계산됨
+                    ))
+                    .toList();
+        } catch (Exception e) {
+            log.error("loadPositions error", e);
+            return Collections.emptyList();
+        }
+    }
+
+    @Override
+    public List<OpenOrder> loadOpenOrders() {
+        // 초기 단계에서는 빈 리스트 반환. 추후 TTTC8036R(모의 VTTC8036R) 연동
+        return Collections.emptyList();
     }
 }
