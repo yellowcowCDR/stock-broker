@@ -21,7 +21,7 @@ class StockNewsServiceTest {
 
     @Test
     void getNews_returnsMockedNews() {
-        given(port.searchNews(anyString())).willReturn(List.of(
+        given(port.searchLatestNews(anyString())).willReturn(List.of(
                 new StockNews("Title 1", "Content 1", NewsSentiment.POSITIVE, null),
                 new StockNews("Title 2", "Content 2", NewsSentiment.NEGATIVE, null),
                 new StockNews("Title 3", "Content 3", NewsSentiment.NEUTRAL, null)

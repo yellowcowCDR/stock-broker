@@ -22,6 +22,6 @@ public class StockNewsService implements GetStockNewsUseCase {
             throw new InvalidStockCodeException("stockCode is required");
         }
 
-        return stockNewsSearchPort.searchNews(stockCode);
+        return stockNewsSearchPort.searchLatestNews(stockCode);
     }
 }

@@ -12,7 +12,7 @@ import java.util.List;
 public class MockStockNewsAdapter implements StockNewsSearchPort {
 
     @Override
-    public List<StockNews> searchNews(String stockCode) {
+    public List<StockNews> searchLatestNews(String stockCode) {
         return List.of(
                 new StockNews(
                         "AI 및 반도체 투자 확대 기대감",
