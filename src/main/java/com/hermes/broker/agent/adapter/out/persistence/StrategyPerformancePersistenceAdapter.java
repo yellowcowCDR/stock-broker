@@ -18,11 +18,19 @@ public class StrategyPerformancePersistenceAdapter implements SaveAgentSkillPerf
     public void save(AgentSkillPerformance performance) {
         AgentSkillPerformanceJpaEntity entity = new AgentSkillPerformanceJpaEntity();
         entity.setSkillVersion(performance.skillVersion());
-        entity.setWinRate(performance.winRate());
-        entity.setProfitFactor(performance.profitFactor());
-        entity.setMaxDrawdown(performance.maxDrawdown());
-        entity.setTotalReturnRate(performance.totalReturnRate());
         entity.setTradeCount(performance.tradeCount());
+        entity.setEvaluationDays(performance.evaluationDays());
+        entity.setWinRate(performance.winRate());
+        entity.setTotalReturnRate(performance.totalReturnRate());
+        entity.setAverageReturnRate(performance.averageReturnRate());
+        entity.setAverageProfit(performance.averageProfit());
+        entity.setAverageLoss(performance.averageLoss());
+        entity.setProfitLossRatio(performance.profitLossRatio());
+        entity.setProfitFactor(performance.profitFactor());
+        entity.setSharpeRatio(performance.sharpeRatio());
+        entity.setMaxDrawdown(performance.maxDrawdown());
+        entity.setHoldAccuracy(performance.holdAccuracy());
+        entity.setRiskBlockEffect(performance.riskBlockEffect());
         entity.setEvaluatedAt(performance.evaluatedAt());
 
         repository.save(entity);
@@ -33,11 +41,19 @@ public class StrategyPerformancePersistenceAdapter implements SaveAgentSkillPerf
         return repository.findById(skillVersion)
                 .map(entity -> new AgentSkillPerformance(
                         entity.getSkillVersion(),
-                        entity.getWinRate(),
-                        entity.getProfitFactor(),
-                        entity.getMaxDrawdown(),
-                        entity.getTotalReturnRate(),
                         entity.getTradeCount(),
+                        entity.getEvaluationDays(),
+                        entity.getWinRate(),
+                        entity.getTotalReturnRate(),
+                        entity.getAverageReturnRate(),
+                        entity.getAverageProfit(),
+                        entity.getAverageLoss(),
+                        entity.getProfitLossRatio(),
+                        entity.getProfitFactor(),
+                        entity.getSharpeRatio(),
+                        entity.getMaxDrawdown(),
+                        entity.getHoldAccuracy(),
+                        entity.getRiskBlockEffect(),
                         entity.getEvaluatedAt()
                 ));
     }

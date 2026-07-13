@@ -32,6 +32,30 @@ public class AgentSkillPerformanceJpaEntity {
     @Column(name = "trade_count", nullable = false)
     private int tradeCount;
 
+    @Column(name = "evaluation_days", nullable = false)
+    private int evaluationDays;
+
+    @Column(name = "average_return_rate", precision = 20, scale = 4)
+    private BigDecimal averageReturnRate;
+
+    @Column(name = "average_profit", precision = 20, scale = 4)
+    private BigDecimal averageProfit;
+
+    @Column(name = "average_loss", precision = 20, scale = 4)
+    private BigDecimal averageLoss;
+
+    @Column(name = "profit_loss_ratio", precision = 20, scale = 4)
+    private BigDecimal profitLossRatio;
+
+    @Column(name = "sharpe_ratio", precision = 20, scale = 4)
+    private BigDecimal sharpeRatio;
+
+    @Column(name = "hold_accuracy", precision = 20, scale = 4)
+    private BigDecimal holdAccuracy;
+
+    @Column(name = "risk_block_effect", precision = 20, scale = 4)
+    private BigDecimal riskBlockEffect;
+
     @Column(name = "evaluated_at", nullable = false)
     private LocalDateTime evaluatedAt;
 

@@ -5,11 +5,19 @@ import java.time.LocalDateTime;
 
 public record AgentSkillPerformance(
         String skillVersion,
-        BigDecimal winRate,
-        BigDecimal profitFactor,
-        BigDecimal maxDrawdown,
-        BigDecimal totalReturnRate,
         int tradeCount,
+        int evaluationDays,
+        BigDecimal winRate,
+        BigDecimal totalReturnRate,
+        BigDecimal averageReturnRate,
+        BigDecimal averageProfit,
+        BigDecimal averageLoss,
+        BigDecimal profitLossRatio,
+        BigDecimal profitFactor,
+        BigDecimal sharpeRatio,
+        BigDecimal maxDrawdown,
+        BigDecimal holdAccuracy,
+        BigDecimal riskBlockEffect,
         LocalDateTime evaluatedAt
 ) {
 }

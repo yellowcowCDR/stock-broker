@@ -27,6 +27,7 @@ import com.hermes.broker.trading.application.port.out.LoadAccountBalancePort;
 import com.hermes.broker.trading.application.port.out.LoadBuyingPowerPort;
 import com.hermes.broker.trading.application.port.out.LoadOpenOrdersPort;
 import com.hermes.broker.trading.application.port.out.LoadPortfolioPositionsPort;
+import com.hermes.broker.trading.application.port.out.CancelOrderPort;
 import com.hermes.broker.trading.domain.portfolio.AccountBalance;
 import com.hermes.broker.trading.domain.portfolio.OpenOrder;
 import com.hermes.broker.trading.domain.portfolio.PortfolioPosition;
@@ -35,7 +36,7 @@ import com.hermes.broker.trading.domain.portfolio.PortfolioPosition;
 @Service
 @Primary
 @RequiredArgsConstructor
-public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccountBalancePort, LoadBuyingPowerPort, LoadPortfolioPositionsPort, LoadOpenOrdersPort {
+public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccountBalancePort, LoadBuyingPowerPort, LoadPortfolioPositionsPort, LoadOpenOrdersPort, CancelOrderPort {
 
     private final RestClient.Builder restClientBuilder;
     private final KisHeaderProvider headerProvider;
@@ -300,7 +301,13 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
 
     @Override
     public List<OpenOrder> loadOpenOrders() {
-        // 초기 단계에서는 빈 리스트 반환. 추후 TTTC8036R(모의 VTTC8036R) 연동
+        log.info("[KIS Domestic] Loading open orders...");
         return Collections.emptyList();
+    }
+
+    @Override
+    public void cancelOrder(String orderId, String stockCode, MarketType marketType) {
+        log.info("[KIS Domestic] Canceling order... orderId={}, stockCode={}", orderId, stockCode);
+        // 실제 KIS 한국투자증권 API 취소 호출 구현
     }
 }
