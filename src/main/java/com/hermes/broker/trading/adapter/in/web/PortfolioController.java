@@ -9,13 +9,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/broker/trading/portfolio")
+@RequestMapping("/api/v1/broker/account")
 @RequiredArgsConstructor
 public class PortfolioController {
 
     private final GetPortfolioSummaryUseCase getPortfolioSummaryUseCase;
 
-    @GetMapping("/summary")
+    @GetMapping("/portfolio")
     public ResponseEntity<PortfolioSummary> getPortfolioSummary() {
         return ResponseEntity.ok(getPortfolioSummaryUseCase.getPortfolioSummary());
     }
