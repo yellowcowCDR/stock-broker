@@ -95,33 +95,40 @@ public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporatePr
             while ((entry = zis.getNextEntry()) != null) {
                 if (entry.getName().endsWith(".xml")) {
                     XMLInputFactory factory = XMLInputFactory.newInstance();
-                    XMLStreamReader reader = factory.createXMLStreamReader(zis);
+                    XMLStreamReader reader = factory.createXMLStreamReader(new java.io.FilterInputStream(zis) {
+                        @Override
+                        public void close() {}
+                    });
                     
-                    String currentCorpCode = null;
-                    String currentStockCode = null;
-                    String textContent = null;
+                    try {
+                        String currentCorpCode = null;
+                        String currentStockCode = null;
+                        String textContent = null;
 
-                    while (reader.hasNext()) {
-                        int event = reader.next();
-                        switch (event) {
-                            case XMLEvent.CHARACTERS:
-                                textContent = reader.getText().trim();
-                                break;
-                            case XMLEvent.END_ELEMENT:
-                                String qName = reader.getLocalName();
-                                if ("corp_code".equals(qName)) {
-                                    currentCorpCode = textContent;
-                                } else if ("stock_code".equals(qName)) {
-                                    currentStockCode = textContent;
-                                } else if ("list".equals(qName)) {
-                                    if (currentStockCode != null && !currentStockCode.isBlank()) {
-                                        map.put(currentStockCode, currentCorpCode);
+                        while (reader.hasNext()) {
+                            int event = reader.next();
+                            switch (event) {
+                                case XMLEvent.CHARACTERS:
+                                    textContent = reader.getText().trim();
+                                    break;
+                                case XMLEvent.END_ELEMENT:
+                                    String qName = reader.getLocalName();
+                                    if ("corp_code".equals(qName)) {
+                                        currentCorpCode = textContent;
+                                    } else if ("stock_code".equals(qName)) {
+                                        currentStockCode = textContent;
+                                    } else if ("list".equals(qName)) {
+                                        if (currentStockCode != null && !currentStockCode.isBlank()) {
+                                            map.put(currentStockCode, currentCorpCode);
+                                        }
+                                        currentCorpCode = null;
+                                        currentStockCode = null;
                                     }
-                                    currentCorpCode = null;
-                                    currentStockCode = null;
-                                }
-                                break;
+                                    break;
+                            }
                         }
+                    } finally {
+                        reader.close();
                     }
                 }
             }
