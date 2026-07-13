@@ -1,9 +1,14 @@
 kis:
   api:
-    base-url: https://openapivts.koreainvestment.com:29443
+    base-url: ${KIS_API_BASE_URL:https://openapivts.koreainvestment.com:29443}
     app-key: ${KIS_MOCK_APP_KEY:your_mock_app_key_here}
     app-secret: ${KIS_MOCK_APP_SECRET:your_mock_app_secret_here}
     account-no: ${KIS_MOCK_ACCOUNT_NO:12345678-01}
+    connect-timeout: ${KIS_CONNECT_TIMEOUT:3s}
+    read-timeout: ${KIS_READ_TIMEOUT:10s}
+
+trading:
+  mode: PAPER
 
 spring:
   jpa:
