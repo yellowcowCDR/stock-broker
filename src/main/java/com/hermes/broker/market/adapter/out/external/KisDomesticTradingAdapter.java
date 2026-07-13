@@ -63,6 +63,29 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
                 .build();
     }
 
+    private String getCano() {
+        if (accountNo == null) return "";
+        if (accountNo.contains("-")) {
+            return accountNo.split("-")[0];
+        }
+        if (accountNo.length() >= 10) {
+            return accountNo.substring(0, 8);
+        }
+        return accountNo;
+    }
+
+    private String getAcntPrdtCd() {
+        if (accountNo == null) return "01";
+        if (accountNo.contains("-")) {
+            String[] parts = accountNo.split("-");
+            return parts.length > 1 ? parts[1] : "01";
+        }
+        if (accountNo.length() >= 10) {
+            return accountNo.substring(8, 10);
+        }
+        return "01";
+    }
+
     @Override
     public CurrentPriceDto getCurrentPrice(String stockCode) {
         String trId = "FHKST01010100"; // 국내주식 기본시세
@@ -105,8 +128,8 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
         String trId = orderRequest.getOrderType() == OrderType.BUY ? "TTTC0802U" : "TTTC0801U";
 
         Map<String, Object> body = Map.of(
-                "CANO", accountNo.split("-")[0], // 종합계좌번호(앞 8자리)
-                "ACNT_PRDT_CD", accountNo.split("-")[1], // 계좌상품코드(뒤 2자리)
+                "CANO", getCano(), // 종합계좌번호(앞 8자리)
+                "ACNT_PRDT_CD", getAcntPrdtCd(), // 계좌상품코드(뒤 2자리)
                 "PDNO", orderRequest.getStockCode(),
                 "ORD_DVSN", "00", // 00: 지정가 (시장가 등은 별도 처리 필요)
                 "ORD_QTY", String.valueOf(orderRequest.getQuantity()),
@@ -154,8 +177,8 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
             Map response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/uapi/domestic-stock/v1/trading/inquire-balance")
-                            .queryParam("CANO", accountNo.split("-")[0])
-                            .queryParam("ACNT_PRDT_CD", accountNo.split("-")[1])
+                            .queryParam("CANO", getCano())
+                            .queryParam("ACNT_PRDT_CD", getAcntPrdtCd())
                             .queryParam("AFHR_FLPR_YN", "N")
                             .queryParam("OFL_YN", "")
                             .queryParam("INQR_DVSN", "02")
@@ -209,8 +232,8 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
             Map response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/uapi/domestic-stock/v1/trading/inquire-balance")
-                            .queryParam("CANO", accountNo.split("-")[0])
-                            .queryParam("ACNT_PRDT_CD", accountNo.split("-")[1])
+                            .queryParam("CANO", getCano())
+                            .queryParam("ACNT_PRDT_CD", getAcntPrdtCd())
                             .queryParam("AFHR_FLPR_YN", "N")
                             .queryParam("OFL_YN", "")
                             .queryParam("INQR_DVSN", "02")
@@ -256,8 +279,8 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
             Map response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/uapi/domestic-stock/v1/trading/inquire-balance")
-                            .queryParam("CANO", accountNo.split("-")[0])
-                            .queryParam("ACNT_PRDT_CD", accountNo.split("-")[1])
+                            .queryParam("CANO", getCano())
+                            .queryParam("ACNT_PRDT_CD", getAcntPrdtCd())
                             .queryParam("AFHR_FLPR_YN", "N")
                             .queryParam("OFL_YN", "")
                             .queryParam("INQR_DVSN", "02")
