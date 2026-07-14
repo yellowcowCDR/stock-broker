@@ -12,8 +12,11 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.LocalTime;
 import java.time.DayOfWeek;
+import java.time.ZonedDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import com.hermes.broker.market.dto.response.MarketStatusResponseDto;
 
 @Slf4j
 @Component
@@ -91,5 +94,59 @@ public class MarketTimeValidator {
         if (!isMarketOpen()) {
             throw new IllegalStateException("Market is closed.");
         }
+    }
+
+    public MarketStatusResponseDto getMarketStatus(String marketType) {
+        boolean open = false;
+        String status = "CLOSED";
+        
+        try {
+            ZonedDateTime nowUtc = ZonedDateTime.now(ZoneId.of("UTC"));
+            
+            if ("OVERSEAS".equalsIgnoreCase(marketType)) {
+                // Convert UTC to NY time to safely handle US DST automatically
+                ZonedDateTime nyTime = nowUtc.withZoneSameInstant(ZoneId.of("America/New_York"));
+                LocalTime time = nyTime.toLocalTime();
+                DayOfWeek day = nyTime.getDayOfWeek();
+                
+                // TODO: Integrate actual KIS overseas holiday API here if needed.
+                // For now, simple weekend check.
+                if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+                    status = "CLOSED";
+                    open = false;
+                } else {
+                    if (!time.isBefore(LocalTime.of(4, 0)) && time.isBefore(LocalTime.of(9, 30))) {
+                        status = "PRE_MARKET";
+                        open = true; // or false depending on whether you allow pre-market trading
+                    } else if (!time.isBefore(LocalTime.of(9, 30)) && time.isBefore(LocalTime.of(16, 0))) {
+                        status = "REGULAR_MARKET";
+                        open = true;
+                    } else if (!time.isBefore(LocalTime.of(16, 0)) && time.isBefore(LocalTime.of(20, 0))) {
+                        status = "AFTER_MARKET";
+                        open = true; // or false depending on whether you allow after-market trading
+                    } else if (time.isAfter(LocalTime.of(20, 0)) || time.isBefore(LocalTime.of(4, 0))) {
+                        status = "DAY_TRADING";
+                        open = true; // Blue Ocean day trading hours roughly
+                    } else {
+                        status = "CLOSED";
+                        open = false;
+                    }
+                }
+            } else {
+                // DOMESTIC logic
+                open = isMarketOpen();
+                status = open ? "REGULAR_MARKET" : "CLOSED";
+            }
+        } catch (Exception e) {
+            log.error("Error checking market status", e);
+            status = "ERROR";
+        }
+
+        return MarketStatusResponseDto.builder()
+                .marketType(marketType)
+                .isOpen(open)
+                .status(status)
+                .checkedAt(ZonedDateTime.now(ZoneId.of("UTC")))
+                .build();
     }
 }
