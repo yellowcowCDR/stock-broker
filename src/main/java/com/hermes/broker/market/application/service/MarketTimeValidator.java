@@ -35,8 +35,9 @@ public class MarketTimeValidator {
         if (baseUrl.contains("openapivts")) {
             log.info("Mock environment detected. Skipping KIS holiday API check.");
             LocalTime now = LocalTime.now();
-            LocalTime open = LocalTime.of(9, 0);
-            LocalTime close = LocalTime.of(15, 30);
+            // UTC 기준 00:00 ~ 06:30 (KST 09:00 ~ 15:30)
+            LocalTime open = LocalTime.of(0, 0);
+            LocalTime close = LocalTime.of(6, 30);
             DayOfWeek day = LocalDate.now().getDayOfWeek();
             if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
                 return false;
@@ -71,10 +72,10 @@ public class MarketTimeValidator {
                         return false;
                     }
                     
-                    // 영업일이라면 현재 시간이 09:00 ~ 15:30 사이인지 추가 확인
+                    // 영업일이라면 현재 시간이 UTC 기준 00:00 ~ 06:30 (KST 09:00 ~ 15:30) 사이인지 추가 확인
                     LocalTime now = LocalTime.now();
-                    LocalTime open = LocalTime.of(9, 0);
-                    LocalTime close = LocalTime.of(15, 30);
+                    LocalTime open = LocalTime.of(0, 0);
+                    LocalTime close = LocalTime.of(6, 30);
                     return !now.isBefore(open) && !now.isAfter(close);
                 }
             }
