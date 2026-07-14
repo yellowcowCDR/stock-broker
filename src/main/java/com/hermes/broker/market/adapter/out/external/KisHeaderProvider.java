@@ -1,7 +1,7 @@
 package com.hermes.broker.market.adapter.out.external;
 
+import com.hermes.broker.common.property.KisProperties;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 
@@ -12,15 +12,7 @@ import java.util.function.Consumer;
 public class KisHeaderProvider {
 
     private final KisTokenManager kisTokenManager;
-
-    @Value("${kis.api.app-key}")
-    private String appKey;
-
-    @Value("${kis.api.app-secret}")
-    private String appSecret;
-
-    @Value("${kis.api.base-url}")
-    private String baseUrl;
+    private final KisProperties kisProperties;
 
     /**
      * KIS API 호출 시 필요한 공통 헤더를 생성하는 Consumer 를 반환합니다.
@@ -32,6 +24,7 @@ public class KisHeaderProvider {
      */
     public Consumer<HttpHeaders> createCommonHeaders(String trId) {
         return headers -> {
+            String baseUrl = kisProperties.baseUrl();
             String resolvedTrId = trId;
             if (baseUrl != null && baseUrl.contains("openapivts") && trId != null) {
                 if (trId.startsWith("T") || trId.startsWith("J") || trId.startsWith("C")) {
@@ -40,8 +33,8 @@ public class KisHeaderProvider {
             }
 
             headers.set("authorization", "Bearer " + kisTokenManager.getToken());
-            headers.set("appkey", appKey);
-            headers.set("appsecret", appSecret);
+            headers.set("appkey", kisProperties.api().appKey());
+            headers.set("appsecret", kisProperties.api().appSecret());
             headers.set("tr_id", resolvedTrId);
             // 일반 개인 고객의 경우 "P", 법인의 경우 "B"
             headers.set("custtype", "P");

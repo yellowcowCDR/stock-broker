@@ -6,11 +6,13 @@ import com.hermes.broker.market.adapter.out.external.KisHeaderProvider;
 import com.hermes.broker.trading.adapter.out.persistence.TradingLogJpaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
+import com.hermes.broker.common.property.KisProperties;
+import com.hermes.broker.market.adapter.out.external.interceptor.KisRestClientInterceptor;
+import jakarta.annotation.PostConstruct;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -24,12 +26,19 @@ public class OrderPollingScheduler {
     private final TradingLogJpaRepository tradingLogRepository;
     private final RestClient.Builder restClientBuilder;
     private final KisHeaderProvider headerProvider;
+    private final KisProperties kisProperties;
+    private final KisRestClientInterceptor kisRestClientInterceptor;
 
-    @Value("${kis.api.base-url}")
-    private String baseUrl;
+    private RestClient restClient;
 
-    @Value("${kis.api.account-no}")
-    private String accountNo;
+    @PostConstruct
+    public void init() {
+        String baseUrl = kisProperties.baseUrl();
+        this.restClient = restClientBuilder
+                .baseUrl(baseUrl)
+                .requestInterceptor(kisRestClientInterceptor)
+                .build();
+    }
 
     /**
      * 10초마다 PENDING 상태인 주문을 찾아 KIS API로 체결 여부를 확인하고 업데이트합니다.
@@ -47,7 +56,6 @@ public class OrderPollingScheduler {
         }
 
         log.info("Polling {} pending orders...", pendingLogs.size());
-        RestClient restClient = restClientBuilder.baseUrl(baseUrl).build();
 
         for (TradingLog pendingLog : pendingLogs) {
             try {
@@ -55,12 +63,15 @@ public class OrderPollingScheduler {
                 // 여기서는 예시로 KIS API 응답을 받아 체결 처리했다고 가정하는 로직을 작성합니다.
                 
                 String trId = "TTTC8001R"; // 주식일별주문체결조회
+                String accountNo = kisProperties.api().accountNo();
+                String cano = accountNo != null && accountNo.contains("-") ? accountNo.split("-")[0] : accountNo;
+                String acntPrdtCd = accountNo != null && accountNo.contains("-") && accountNo.split("-").length > 1 ? accountNo.split("-")[1] : "01";
                 
                 Map response = restClient.get()
                         .uri(uriBuilder -> uriBuilder
                                 .path("/uapi/domestic-stock/v1/trading/inquire-daily-ccld")
-                                .queryParam("CANO", accountNo.split("-")[0])
-                                .queryParam("ACNT_PRDT_CD", accountNo.split("-")[1])
+                                .queryParam("CANO", cano != null ? cano : "")
+                                .queryParam("ACNT_PRDT_CD", acntPrdtCd != null ? acntPrdtCd : "01")
                                 .queryParam("INQR_STRT_DT", java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")))
                                 .queryParam("INQR_END_DT", java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")))
                                 .queryParam("SLL_BUY_DVSN_CD", "00")

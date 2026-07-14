@@ -3,7 +3,9 @@ package com.hermes.broker.market.application.service;
 import com.hermes.broker.market.adapter.out.external.KisHeaderProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import com.hermes.broker.common.property.KisProperties;
+import com.hermes.broker.market.adapter.out.external.interceptor.KisRestClientInterceptor;
+import jakarta.annotation.PostConstruct;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -25,16 +27,31 @@ public class MarketTimeValidator {
 
     private final RestClient.Builder restClientBuilder;
     private final KisHeaderProvider headerProvider;
+    private final KisProperties kisProperties;
+    private final KisRestClientInterceptor kisRestClientInterceptor;
+    
+    private RestClient restClient;
 
-    @Value("${kis.api.base-url}")
-    private String baseUrl;
+    @PostConstruct
+    public void init() {
+        String baseUrl = kisProperties.baseUrl();
+        this.restClient = restClientBuilder
+                .baseUrl(baseUrl)
+                .requestInterceptor(kisRestClientInterceptor)
+                .build();
+    }
+
+    public String getEnvironmentName() {
+        return kisProperties.environment().name();
+    }
 
     /**
      * KIS API를 연동하여 현재 국내 주식 장이 개장된 상태인지 확인합니다.
      * 캐시를 적용하여 30분 단위로만 실제 API를 호출합니다.
      */
-    @Cacheable(value = "marketStatusCache", key = "'domestic'")
+    @Cacheable(value = "marketStatusCache", key = "#root.target.getEnvironmentName() + ':domestic'")
     public boolean isMarketOpen() {
+        String baseUrl = kisProperties.baseUrl();
         if (baseUrl.contains("openapivts")) {
             log.info("Mock environment detected. Skipping KIS holiday API check.");
             LocalTime now = LocalTime.now();
@@ -53,7 +70,6 @@ public class MarketTimeValidator {
         String trId = "CTCA0903R"; // 국내휴장일조회 (또는 사용하는 KIS 휴장일 API TR ID)
 
         try {
-            RestClient restClient = restClientBuilder.baseUrl(baseUrl).build();
             Map response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/uapi/domestic-stock/v1/quotations/chk-holiday")

@@ -16,7 +16,8 @@ import org.springframework.context.annotation.Configuration;
         TradingProperties.class,
         RiskProperties.class,
         RiskPolicyProperties.class,
-        StrategyEvaluationProperties.class
+        StrategyEvaluationProperties.class,
+        com.hermes.broker.common.property.KisProperties.class
 })
 public class PropertiesConfig {
 }

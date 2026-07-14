@@ -19,6 +19,12 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.hermes.broker.common.property.KisProperties;
+import com.hermes.broker.common.property.TradingProperties;
+import com.hermes.broker.common.property.KisEnvironment;
+import com.hermes.broker.market.adapter.out.external.interceptor.KisRestClientInterceptor;
+import jakarta.annotation.PostConstruct;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -26,18 +32,32 @@ public class KisOverseasTradingAdapter implements MarketTradingPort {
 
     private final RestClient.Builder restClientBuilder;
     private final KisHeaderProvider headerProvider;
+    private final KisProperties kisProperties;
+    private final TradingProperties tradingProperties;
+    private final KisRestClientInterceptor kisRestClientInterceptor;
+    
+    private RestClient restClient;
 
-    @Value("${kis.api.base-url}")
-    private String baseUrl;
-    
-    @Value("${kis.api.account-number:1234567801}")
-    private String accountNumber;
-    
+    @PostConstruct
+    public void init() {
+        String baseUrl = kisProperties.baseUrl();
+        this.restClient = restClientBuilder
+                .baseUrl(baseUrl)
+                .requestInterceptor(kisRestClientInterceptor)
+                .build();
+    }
+
+    private String getAccountNumber() {
+        return kisProperties.api().accountNo();
+    }
+
     private String getCano() {
+        String accountNumber = getAccountNumber();
         return accountNumber != null && accountNumber.length() >= 8 ? accountNumber.substring(0, 8) : "";
     }
     
     private String getAcntPrdtCd() {
+        String accountNumber = getAccountNumber();
         return accountNumber != null && accountNumber.length() >= 10 ? accountNumber.substring(8, 10) : "01";
     }
 
@@ -50,7 +70,6 @@ public class KisOverseasTradingAdapter implements MarketTradingPort {
     public CurrentPriceDto getCurrentPrice(String stockCode) {
         String trId = "HHDFS76200200";
         
-        RestClient restClient = restClientBuilder.baseUrl(baseUrl).build();
         JsonNode response = restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/uapi/overseas-price/v1/quotations/price-detail")
@@ -79,6 +98,8 @@ public class KisOverseasTradingAdapter implements MarketTradingPort {
 
     @Override
     public OrderResponseDto placeOrder(OrderRequestDto orderRequest) {
+        validateOrderSafety();
+        
         String trId = orderRequest.getOrderType() == OrderType.BUY ? "JTTT1002U" : "JTTT1006U";
         
         Map<String, String> requestBody = new HashMap<>();
@@ -91,7 +112,6 @@ public class KisOverseasTradingAdapter implements MarketTradingPort {
         requestBody.put("OVRS_ORD_UNPR", orderRequest.getPrice().toPlainString());
         requestBody.put("ORD_SVR_DVSN_CD", "0");
 
-        RestClient restClient = restClientBuilder.baseUrl(baseUrl).build();
         JsonNode response = restClient.post()
                 .uri("/uapi/overseas-stock/v1/trading/order")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -114,11 +134,24 @@ public class KisOverseasTradingAdapter implements MarketTradingPort {
                 .build();
     }
 
+    private void validateOrderSafety() {
+        if (kisProperties.environment() == KisEnvironment.PRODUCTION) {
+            boolean realOrderEnabled = tradingProperties.realOrder() != null && tradingProperties.realOrder().enabled();
+            boolean killSwitchEnabled = tradingProperties.killSwitch() == null || tradingProperties.killSwitch().enabled();
+
+            if (!realOrderEnabled) {
+                throw new IllegalStateException("Real orders are disabled in configuration.");
+            }
+            if (killSwitchEnabled) {
+                throw new IllegalStateException("Kill switch is active. Real orders are blocked.");
+            }
+        }
+    }
+
     @Override
     public PortfolioDto getPortfolio() {
         String trId = "CTRP6504R"; 
         
-        RestClient restClient = restClientBuilder.baseUrl(baseUrl).build();
         JsonNode response = restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/uapi/overseas-stock/v1/trading/inquire-present-balance")

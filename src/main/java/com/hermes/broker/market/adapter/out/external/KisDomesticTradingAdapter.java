@@ -17,6 +17,10 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import com.hermes.broker.common.property.KisProperties;
+import com.hermes.broker.common.property.TradingProperties;
+import com.hermes.broker.common.property.KisEnvironment;
+import com.hermes.broker.market.adapter.out.external.interceptor.KisRestClientInterceptor;
 
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -47,23 +51,27 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
     }
 
     private final MarketTimeValidator timeValidator;
-
-    @Value("${kis.api.base-url}")
-    private String baseUrl;
-
-    @Value("${kis.api.account-no}")
-    private String accountNo;
+    private final KisProperties kisProperties;
+    private final TradingProperties tradingProperties;
+    private final KisRestClientInterceptor kisRestClientInterceptor;
 
     private RestClient restClient;
 
     @PostConstruct
     public void init() {
+        String baseUrl = kisProperties.baseUrl();
         this.restClient = restClientBuilder
                 .baseUrl(baseUrl)
+                .requestInterceptor(kisRestClientInterceptor)
                 .build();
     }
 
+    private String getAccountNo() {
+        return kisProperties.api().accountNo();
+    }
+
     private String getCano() {
+        String accountNo = getAccountNo();
         if (accountNo == null) return "";
         if (accountNo.contains("-")) {
             return accountNo.split("-")[0];
@@ -75,6 +83,7 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
     }
 
     private String getAcntPrdtCd() {
+        String accountNo = getAccountNo();
         if (accountNo == null) return "01";
         if (accountNo.contains("-")) {
             String[] parts = accountNo.split("-");
@@ -124,6 +133,8 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
     @Override
     public OrderResponseDto placeOrder(OrderRequestDto orderRequest) {
         timeValidator.validateMarketOpen(); // 장 운영 시간 검증
+        validateOrderSafety(); // 실전 주문 안전 검증
+        
         // 매수: TTTC0802U, 매도: TTTC0801U
         String trId = orderRequest.getOrderType() == OrderType.BUY ? "TTTC0802U" : "TTTC0801U";
 
@@ -166,6 +177,20 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
                     .success(false)
                     .message("Exception occurred: " + e.getMessage())
                     .build();
+        }
+    }
+
+    private void validateOrderSafety() {
+        if (kisProperties.environment() == KisEnvironment.PRODUCTION) {
+            boolean realOrderEnabled = tradingProperties.realOrder() != null && tradingProperties.realOrder().enabled();
+            boolean killSwitchEnabled = tradingProperties.killSwitch() == null || tradingProperties.killSwitch().enabled();
+
+            if (!realOrderEnabled) {
+                throw new IllegalStateException("Real orders are disabled in configuration.");
+            }
+            if (killSwitchEnabled) {
+                throw new IllegalStateException("Kill switch is active. Real orders are blocked.");
+            }
         }
     }
 

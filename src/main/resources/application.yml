@@ -64,7 +64,29 @@ external-api:
     max-display: ${NAVER_NEWS_MAX_DISPLAY:100}
     cache-ttl: ${NAVER_NEWS_CACHE_TTL:10m}
 
+kis:
+  rate-limit:
+    enabled: true
+    acquire-timeout: 30s
+  retry:
+    query:
+      max-attempts: 3
+      multiplier: 2.0
+      jitter-min: 100ms
+      jitter-max: 300ms
+    order:
+      max-attempts: 1
+  token:
+    minimum-issue-interval: 60s
+    refresh-before-expiration: 5m
+  queue:
+    max-size: 100
+
 trading:
+  real-order:
+    enabled: false
+  kill-switch:
+    enabled: true
   risk:
     daily-max-loss-rate: ${DAILY_MAX_LOSS_RATE:0.03}
     max-order-amount: ${MAX_ORDER_AMOUNT:100000}

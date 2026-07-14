@@ -6,7 +6,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record TradingProperties(
         SchedulerProperties scheduler,
         RiskProperties risk,
-        String mode
+        String mode,
+        RealOrderProperties realOrder,
+        KillSwitchProperties killSwitch
 ) {
     public record SchedulerProperties(boolean enabled) {}
+    public record RealOrderProperties(boolean enabled) {}
+    public record KillSwitchProperties(boolean enabled) {}
 }
