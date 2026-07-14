@@ -50,7 +50,7 @@ public class MarketTimeValidator {
      * 캐시를 적용하여 30분 단위로만 실제 API를 호출합니다.
      */
     @Cacheable(value = "marketStatusCache", key = "#root.target.getEnvironmentName() + ':domestic'")
-    public boolean isMarketOpen() {
+    public boolean isDomesticMarketOpen() {
         String baseUrl = kisProperties.baseUrl();
         if (baseUrl.contains("openapivts")) {
             log.info("Mock environment detected. Skipping KIS holiday API check.");
@@ -106,9 +106,10 @@ public class MarketTimeValidator {
         }
     }
 
-    public void validateMarketOpen() {
-        if (!isMarketOpen()) {
-            throw new IllegalStateException("Market is closed.");
+    public void validateMarketOpen(String marketType) {
+        MarketStatusResponseDto status = getMarketStatus(marketType);
+        if (!status.isOpen()) {
+            throw new IllegalStateException("Market (" + marketType + ") is closed. Status: " + status.getStatus());
         }
     }
 
@@ -150,7 +151,7 @@ public class MarketTimeValidator {
                 }
             } else {
                 // DOMESTIC logic
-                open = isMarketOpen();
+                open = isDomesticMarketOpen();
                 status = open ? "REGULAR_MARKET" : "CLOSED";
             }
         } catch (Exception e) {

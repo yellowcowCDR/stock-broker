@@ -6,13 +6,11 @@ import com.hermes.broker.trading.dto.OrderRequestDto;
 import com.hermes.broker.trading.dto.OrderResponseDto;
 import com.hermes.broker.market.dto.PortfolioDto;
 import com.hermes.broker.trading.domain.MarketType;
-import com.hermes.broker.market.adapter.out.external.KisHeaderProvider;
 import com.hermes.broker.market.application.port.out.MarketTradingPort;
 import com.hermes.broker.market.application.service.MarketTimeValidator;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -132,7 +130,7 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
 
     @Override
     public OrderResponseDto placeOrder(OrderRequestDto orderRequest) {
-        timeValidator.validateMarketOpen(); // 장 운영 시간 검증
+        timeValidator.validateMarketOpen("DOMESTIC"); // 장 운영 시간 검증
         validateOrderSafety(); // 실전 주문 안전 검증
         
         // 매수: TTTC0802U, 매도: TTTC0801U
@@ -252,49 +250,56 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
 
     @Override
     public AccountBalance loadBalance() {
-        String trId = "TTTC8434R"; // 주식 잔고조회
+        PortfolioDto domestic = getPortfolio(); // domestic portfolio API
+        return new AccountBalance(
+                domestic.getTotalAsset(),
+                domestic.getAvailableCash(),
+                domestic.getTotalAsset(), // assuming evalAmt is totalAsset?
+                BigDecimal.ZERO,
+                domestic.getUsdCash() != null ? domestic.getUsdCash() : BigDecimal.ZERO,
+                domestic.getUsdBuyingPower() != null ? domestic.getUsdBuyingPower() : BigDecimal.ZERO
+        );
+    }
+
+
+
+    @Override
+    public BigDecimal loadBuyingPower() {
+        String trId = "TTTC8908R"; // 국내주식 매수가능조회
+        
         try {
             Map response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
-                            .path("/uapi/domestic-stock/v1/trading/inquire-balance")
+                            .path("/uapi/domestic-stock/v1/trading/inquire-psbl-order")
                             .queryParam("CANO", getCano())
                             .queryParam("ACNT_PRDT_CD", getAcntPrdtCd())
-                            .queryParam("AFHR_FLPR_YN", "N")
-                            .queryParam("OFL_YN", "")
-                            .queryParam("INQR_DVSN", "02")
-                            .queryParam("UNPR_DVSN", "01")
-                            .queryParam("FUND_STTL_ICLD_YN", "N")
-                            .queryParam("FNCG_AMT_AUTO_RDPT_YN", "N")
-                            .queryParam("PRCS_DVSN", "00")
-                            .queryParam("CTX_AREA_FK100", "")
-                            .queryParam("CTX_AREA_NK100", "")
+                            .queryParam("PDNO", "")
+                            .queryParam("ORD_UNPR", "")
+                            .queryParam("ORD_DVSN", "00")
+                            .queryParam("CMA_EVLU_AMT_ICLD_YN", "N")
+                            .queryParam("OVRS_ICLD_YN", "N")
                             .build())
                     .headers(headerProvider.createCommonHeaders(trId))
                     .retrieve()
                     .body(Map.class);
 
-            if (response == null || !response.containsKey("output2")) {
-                throw new IllegalStateException("Failed to get balance");
+            if (response == null || !response.containsKey("output")) {
+                log.warn("Failed to get domestic buying power, output is missing");
+                return BigDecimal.ZERO;
             }
-            List<Map<String, String>> output2 = (List<Map<String, String>>) response.get("output2");
-            Map<String, String> accountSummary = output2.get(0);
+
+            Map<String, String> output = (Map<String, String>) response.get("output");
+            String buyingPowerStr = output.get("nrcvb_buy_amt"); // 미수 없는 실제 매수 가능 금액
+            if (buyingPowerStr == null || buyingPowerStr.isEmpty()) {
+                buyingPowerStr = "0";
+            }
             
-            BigDecimal totalAsset = new BigDecimal(accountSummary.get("tot_evlu_amt"));
-            BigDecimal cash = new BigDecimal(accountSummary.get("dnca_tot_amt")); // 예수금총액
-            BigDecimal evalAmt = new BigDecimal(accountSummary.get("scts_evlu_amt")); // 유가증권평가금액
-            BigDecimal pnl = new BigDecimal(accountSummary.get("evlu_pfls_smtl_amt")); // 평가손익합계금액
+            return new BigDecimal(buyingPowerStr);
 
-            return new AccountBalance(totalAsset, cash, evalAmt, pnl);
         } catch (Exception e) {
-            log.error("loadBalance error", e);
-            return new AccountBalance(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+            log.error("Error occurred while fetching domestic buying power", e);
+            return BigDecimal.ZERO;
         }
-    }
-
-    @Override
-    public BigDecimal loadBuyingPower() {
-        // 간이 구현: 예수금 반환
-        return loadBalance().cashAmount();
     }
 
     @Override

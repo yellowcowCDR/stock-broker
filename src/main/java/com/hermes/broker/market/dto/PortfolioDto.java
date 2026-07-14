@@ -11,6 +11,8 @@ import java.util.List;
 public class PortfolioDto {
     private BigDecimal totalAsset;
     private BigDecimal availableCash;
+    private BigDecimal usdCash;
+    private BigDecimal usdBuyingPower;
     private List<StockHolding> holdings;
 
     @Getter

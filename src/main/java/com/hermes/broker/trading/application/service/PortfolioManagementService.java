@@ -4,6 +4,8 @@ import com.hermes.broker.trading.application.port.in.GetPortfolioSummaryUseCase;
 import com.hermes.broker.trading.application.port.out.LoadAccountBalancePort;
 import com.hermes.broker.trading.application.port.out.LoadBuyingPowerPort;
 import com.hermes.broker.trading.application.port.out.LoadPortfolioPositionsPort;
+import com.hermes.broker.trading.application.port.out.LoadOverseasBalancePort;
+import com.hermes.broker.trading.domain.portfolio.OverseasBalance;
 import com.hermes.broker.trading.domain.portfolio.AccountBalance;
 import com.hermes.broker.trading.domain.portfolio.PortfolioPosition;
 import com.hermes.broker.trading.domain.portfolio.PortfolioSummary;
@@ -27,15 +29,20 @@ public class PortfolioManagementService implements GetPortfolioSummaryUseCase {
     private final LoadAccountBalancePort loadAccountBalancePort;
     private final LoadPortfolioPositionsPort loadPortfolioPositionsPort;
     private final LoadBuyingPowerPort loadBuyingPowerPort;
+    private final LoadOverseasBalancePort loadOverseasBalancePort;
 
     @Override
     public PortfolioSummary getPortfolioSummary() {
         AccountBalance balance = loadAccountBalancePort.loadBalance();
         List<PortfolioPosition> positions = loadPortfolioPositionsPort.loadPositions();
         BigDecimal buyingPower = loadBuyingPowerPort.loadBuyingPower();
+        OverseasBalance overseasBalance = loadOverseasBalancePort.loadOverseasBalance();
 
         BigDecimal totalAssetAmount = balance.totalAssetAmount() != null ? balance.totalAssetAmount() : BigDecimal.ZERO;
         BigDecimal cashAmount = balance.cashAmount() != null ? balance.cashAmount() : BigDecimal.ZERO;
+        
+        BigDecimal usdCash = overseasBalance.usdCash() != null ? overseasBalance.usdCash() : BigDecimal.ZERO;
+        BigDecimal usdBuyingPower = overseasBalance.usdBuyingPower() != null ? overseasBalance.usdBuyingPower() : BigDecimal.ZERO;
         
         // Calculate cash rate
         BigDecimal cashRate = BigDecimal.ZERO;
@@ -73,6 +80,8 @@ public class PortfolioManagementService implements GetPortfolioSummaryUseCase {
                 totalAssetAmount,
                 cashAmount,
                 buyingPower,
+                usdCash,
+                usdBuyingPower,
                 balance.totalEvaluationAmount(),
                 balance.totalProfitLossAmount(),
                 dailyProfitLossAmount,

@@ -31,7 +31,7 @@ public class TradingService implements AgentTradingUseCase {
     @Override
     @Transactional
     public OrderResponseDto placeOrder(OrderRequestDto request) {
-        timeValidator.validateMarketOpen();
+        timeValidator.validateMarketOpen(request.getMarketType() != null ? request.getMarketType().name() : "DOMESTIC");
 
         TradingLog logEntry = TradingLog.builder()
                 .marketType(request.getMarketType() != null ? request.getMarketType() : MarketType.DOMESTIC)

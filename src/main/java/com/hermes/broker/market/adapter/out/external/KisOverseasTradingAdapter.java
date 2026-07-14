@@ -10,7 +10,6 @@ import com.hermes.broker.trading.dto.OrderRequestDto;
 import com.hermes.broker.trading.dto.OrderResponseDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -25,10 +24,13 @@ import com.hermes.broker.common.property.KisEnvironment;
 import com.hermes.broker.market.adapter.out.external.interceptor.KisRestClientInterceptor;
 import jakarta.annotation.PostConstruct;
 
+import com.hermes.broker.trading.application.port.out.LoadOverseasBalancePort;
+import com.hermes.broker.trading.domain.portfolio.OverseasBalance;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class KisOverseasTradingAdapter implements MarketTradingPort {
+public class KisOverseasTradingAdapter implements MarketTradingPort, LoadOverseasBalancePort {
 
     private final RestClient.Builder restClientBuilder;
     private final KisHeaderProvider headerProvider;
@@ -160,6 +162,7 @@ public class KisOverseasTradingAdapter implements MarketTradingPort {
                         .queryParam("WCRC_FRCR_DVSN_CD", "01") 
                         .queryParam("NATN_CD", "840") 
                         .queryParam("TR_MKET_CD", "00") 
+                        .queryParam("INQR_DVSN_CD", "00")
                         .build())
                 .headers(headerProvider.createCommonHeaders(trId))
                 .retrieve()
@@ -172,5 +175,68 @@ public class KisOverseasTradingAdapter implements MarketTradingPort {
                 .availableCash(BigDecimal.ZERO)
                 .holdings(java.util.Collections.emptyList())
                 .build();
+    }
+
+    @Override
+    public OverseasBalance loadOverseasBalance() {
+        BigDecimal usdBuyingPower = getOverseasBuyingPower();
+        BigDecimal usdCash = getOverseasCash();
+        return new OverseasBalance(usdCash, usdBuyingPower);
+    }
+
+    private BigDecimal getOverseasBuyingPower() {
+        String trId = "TTTS3007R";
+        try {
+            JsonNode response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/uapi/overseas-stock/v1/trading/inquire-psamount")
+                            .queryParam("CANO", getCano())
+                            .queryParam("ACNT_PRDT_CD", getAcntPrdtCd())
+                            .queryParam("OVRS_EXCG_CD", "NASD")
+                            .queryParam("TR_CRCY_CD", "USD")
+                            .queryParam("ITEM_CD", "")
+                            .build())
+                    .headers(headerProvider.createCommonHeaders(trId))
+                    .retrieve()
+                    .body(JsonNode.class);
+
+            if (response != null && response.has("output")) {
+                String amt = response.get("output").path("ovrs_ord_psbl_amt").asText("0");
+                return new BigDecimal(amt);
+            }
+        } catch (Exception e) {
+            log.error("Failed to get overseas buying power", e);
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private BigDecimal getOverseasCash() {
+        String trId = "CTRP6504R";
+        try {
+            JsonNode response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/uapi/overseas-stock/v1/trading/inquire-present-balance")
+                            .queryParam("CANO", getCano())
+                            .queryParam("ACNT_PRDT_CD", getAcntPrdtCd())
+                            .queryParam("WCRC_FRCR_DVSN_CD", "02") // 02: 외화
+                            .queryParam("NATN_CD", "840") // 미국
+                            .queryParam("TR_MKET_CD", "00")
+                            .queryParam("INQR_DVSN_CD", "00")
+                            .build())
+                    .headers(headerProvider.createCommonHeaders(trId))
+                    .retrieve()
+                    .body(JsonNode.class);
+
+            if (response != null && response.has("output2")) {
+                String cash = response.get("output2").path("frcr_dncl_amt_2").asText("0"); // 외화예수금액2
+                if ("0".equals(cash) || cash.isEmpty()) {
+                    cash = response.get("output2").path("frcr_drwg_psbl_amt_1").asText("0"); // 외화출금가능금액1
+                }
+                return new BigDecimal(cash);
+            }
+        } catch (Exception e) {
+            log.error("Failed to get overseas cash", e);
+        }
+        return BigDecimal.ZERO;
     }
 }

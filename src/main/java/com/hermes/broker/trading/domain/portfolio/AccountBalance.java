@@ -6,6 +6,8 @@ public record AccountBalance(
         BigDecimal totalAssetAmount,
         BigDecimal cashAmount,
         BigDecimal totalEvaluationAmount,
-        BigDecimal totalProfitLossAmount
+        BigDecimal totalProfitLossAmount,
+        BigDecimal usdCash,
+        BigDecimal usdBuyingPower
 ) {
 }

@@ -8,6 +8,8 @@ public record PortfolioSummary(
         BigDecimal totalAssetAmount,
         BigDecimal cashAmount,
         BigDecimal buyingPower,
+        BigDecimal usdCash,
+        BigDecimal usdBuyingPower,
         BigDecimal totalEvaluationAmount,
         BigDecimal totalProfitLossAmount,
         BigDecimal dailyProfitLossAmount,
