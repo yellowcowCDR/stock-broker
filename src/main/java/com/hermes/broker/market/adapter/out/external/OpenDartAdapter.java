@@ -13,6 +13,8 @@ import com.hermes.broker.market.domain.FinancialStatement;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -23,6 +25,7 @@ import javax.xml.stream.XMLStreamReader;
 import javax.xml.stream.events.XMLEvent;
 import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.zip.ZipEntry;
@@ -33,7 +36,11 @@ import java.util.zip.ZipInputStream;
 @RequiredArgsConstructor
 public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporateProfilePort, LoadCorporateDisclosurePort, LoadFinancialStatementPort {
 
+    private static final String CORP_CODE_CACHE_NAME = "opendart_corp_code";
+    private static final String ALL_CORP_CODES_CACHE_KEY = "all_codes";
+
     private final OpenDartProperties properties;
+    private final CacheManager cacheManager;
     private RestClient restClient;
 
     @PostConstruct
@@ -62,12 +69,27 @@ public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporatePr
     @Override
     public Optional<String> getCorpCode(String stockCode) {
         checkConfigured();
-        Map<String, String> mapping = getCorpCodeMap();
+        Map<String, String> mapping = getCorpCodeMapFromCache();
         return Optional.ofNullable(mapping.get(stockCode));
     }
 
-    @Cacheable(value = "opendart_corp_code", key = "'all_codes'")
-    public Map<String, String> getCorpCodeMap() {
+    private Map<String, String> getCorpCodeMapFromCache() {
+        Cache cache = Objects.requireNonNull(
+                cacheManager.getCache(CORP_CODE_CACHE_NAME),
+                () -> "Cache is not configured: " + CORP_CODE_CACHE_NAME
+        );
+
+        try {
+            return cache.get(ALL_CORP_CODES_CACHE_KEY, this::downloadCorpCodeMap);
+        } catch (Cache.ValueRetrievalException exception) {
+            if (exception.getCause() instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw exception;
+        }
+    }
+
+    private Map<String, String> downloadCorpCodeMap() {
         log.info("Downloading and parsing OpenDART corpCode.xml...");
         checkConfigured();
         try {
@@ -79,9 +101,15 @@ public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporatePr
                     .retrieve()
                     .body(byte[].class);
 
-            if (zipData == null) return Collections.emptyMap();
+            if (zipData == null || zipData.length == 0) {
+                throw new OpenDartApiException("OpenDART corpCode response is empty.");
+            }
 
-            return parseCorpCodeZip(zipData);
+            Map<String, String> mapping = parseCorpCodeZip(zipData);
+            if (mapping.isEmpty()) {
+                throw new OpenDartApiException("OpenDART corpCode response has no listed corporations.");
+            }
+            return mapping;
         } catch (Exception e) {
             log.error("Failed to download or parse corpCode.xml", e);
             throw new OpenDartApiException("Failed to fetch corpCode mapping", e);
@@ -152,7 +180,7 @@ public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporatePr
                     .body(Map.class);
 
             if (response == null || !"000".equals(response.get("status"))) {
-                return Optional.empty();
+                throw invalidResponse("company profile", response);
             }
 
             CorporateProfile profile = new CorporateProfile(
@@ -178,8 +206,9 @@ public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporatePr
     public List<CorporateDisclosure> loadRecentDisclosures(String corpCode) {
         checkConfigured();
         try {
-            String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-            String threeMonthsAgo = LocalDate.now().minusMonths(3).format(DateTimeFormatter.BASIC_ISO_DATE);
+            LocalDate koreanDate = LocalDate.now(ZoneId.of("Asia/Seoul"));
+            String today = koreanDate.format(DateTimeFormatter.BASIC_ISO_DATE);
+            String threeMonthsAgo = koreanDate.minusMonths(3).format(DateTimeFormatter.BASIC_ISO_DATE);
 
             Map response = restClient.get()
                     .uri(builder -> builder
@@ -193,8 +222,11 @@ public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporatePr
                     .retrieve()
                     .body(Map.class);
 
+            if (isNoData(response)) {
+                return List.of();
+            }
             if (response == null || !"000".equals(response.get("status")) || !response.containsKey("list")) {
-                return Collections.emptyList();
+                throw invalidResponse("disclosures", response);
             }
 
             List<Map<String, String>> list = (List<Map<String, String>>) response.get("list");
@@ -211,8 +243,10 @@ public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporatePr
 
         } catch (Exception e) {
             log.error("Failed to load disclosures for corpCode: {}", corpCode, e);
-            // 에러 시 빈 리스트 반환하여 전체 장애 전파 방지
-            return Collections.emptyList();
+            if (e instanceof OpenDartApiException apiException) {
+                throw apiException;
+            }
+            throw new OpenDartApiException("Disclosure load failed", e);
         }
     }
 
@@ -220,7 +254,7 @@ public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporatePr
     public List<FinancialStatement> loadRecentFinancialStatements(String corpCode) {
         checkConfigured();
         try {
-            String bsnsYear = String.valueOf(LocalDate.now().getYear() - 1); // 작년 기준
+            String bsnsYear = String.valueOf(LocalDate.now(ZoneId.of("Asia/Seoul")).getYear() - 1); // 작년 기준
             
             Map response = restClient.get()
                     .uri(builder -> builder
@@ -233,8 +267,11 @@ public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporatePr
                     .retrieve()
                     .body(Map.class);
 
+            if (isNoData(response)) {
+                return List.of();
+            }
             if (response == null || !"000".equals(response.get("status")) || !response.containsKey("list")) {
-                return Collections.emptyList();
+                throw invalidResponse("financial statements", response);
             }
 
             List<Map<String, String>> list = (List<Map<String, String>>) response.get("list");
@@ -249,7 +286,22 @@ public class OpenDartAdapter implements LoadDartCorporationPort, LoadCorporatePr
                     .toList();
         } catch (Exception e) {
             log.error("Failed to load financials for corpCode: {}", corpCode, e);
-            return Collections.emptyList();
+            if (e instanceof OpenDartApiException apiException) {
+                throw apiException;
+            }
+            throw new OpenDartApiException("Financial statement load failed", e);
         }
+    }
+
+    private boolean isNoData(Map response) {
+        return response != null && "013".equals(String.valueOf(response.get("status")));
+    }
+
+    private OpenDartApiException invalidResponse(String operation, Map response) {
+        String status = response == null ? "NO_RESPONSE" : String.valueOf(response.get("status"));
+        String message = response == null ? "empty response" : String.valueOf(response.get("message"));
+        return new OpenDartApiException(
+                "OpenDART " + operation + " failed: status=" + status + ", message=" + message
+        );
     }
 }

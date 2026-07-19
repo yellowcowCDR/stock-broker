@@ -1,7 +1,7 @@
 package com.hermes.broker.trading.domain.portfolio;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 public record PortfolioSummary(
@@ -12,11 +12,17 @@ public record PortfolioSummary(
         BigDecimal usdBuyingPower,
         BigDecimal totalEvaluationAmount,
         BigDecimal totalProfitLossAmount,
-        BigDecimal dailyProfitLossAmount,
+        BigDecimal previousTotalAssetAmount,
+        BigDecimal dailyAssetChangeAmount,
+        BigDecimal dailyAssetChangeRate,
+        boolean dailyAssetChangeDataComplete,
+        String dailyAssetChangeDataSource,
         BigDecimal cashRate,
         int positionCount,
         List<PortfolioPosition> positions,
         List<SectorExposure> sectorExposures,
-        LocalDateTime calculatedAt
+        boolean sectorDataComplete,
+        String sectorDataSource,
+        Instant calculatedAt
 ) {
 }

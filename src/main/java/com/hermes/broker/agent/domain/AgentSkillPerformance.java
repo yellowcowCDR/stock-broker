@@ -1,7 +1,7 @@
 package com.hermes.broker.agent.domain;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record AgentSkillPerformance(
         String skillVersion,
@@ -18,6 +18,6 @@ public record AgentSkillPerformance(
         BigDecimal maxDrawdown,
         BigDecimal holdAccuracy,
         BigDecimal riskBlockEffect,
-        LocalDateTime evaluatedAt
+        Instant evaluatedAt
 ) {
 }

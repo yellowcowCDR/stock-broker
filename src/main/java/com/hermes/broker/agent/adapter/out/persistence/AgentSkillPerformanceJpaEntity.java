@@ -5,7 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "agent_skill_performance")
@@ -57,12 +57,12 @@ public class AgentSkillPerformanceJpaEntity {
     private BigDecimal riskBlockEffect;
 
     @Column(name = "evaluated_at", nullable = false)
-    private LocalDateTime evaluatedAt;
+    private Instant evaluatedAt;
 
     @PrePersist
     protected void onCreate() {
         if (this.evaluatedAt == null) {
-            this.evaluatedAt = LocalDateTime.now();
+            this.evaluatedAt = Instant.now();
         }
     }
 }

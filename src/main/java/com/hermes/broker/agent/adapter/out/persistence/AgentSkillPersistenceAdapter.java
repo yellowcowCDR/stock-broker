@@ -7,6 +7,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
+import java.util.List;
+import java.util.Set;
+import com.hermes.broker.agent.domain.AgentSkillStatus;
 
 @Component
 @RequiredArgsConstructor
@@ -22,17 +25,38 @@ public class AgentSkillPersistenceAdapter implements LoadAgentSkillPort, SaveAge
     }
 
     @Override
+    public Optional<AgentSkill> loadLatestSkill() {
+        return repository.findFirstByOrderByVersionDesc().map(mapper::toDomain);
+    }
+
+    @Override
+    public Optional<AgentSkill> loadByVersion(int version) {
+        return repository.findByVersion(version).map(mapper::toDomain);
+    }
+
+    @Override
+    public List<AgentSkill> loadVersions(Set<AgentSkillStatus> statuses) {
+        Set<AgentSkillStatus> filter = statuses == null ? Set.of() : Set.copyOf(statuses);
+        return repository.findAllByOrderByVersionDesc().stream()
+                .map(mapper::toDomain)
+                .filter(skill -> filter.isEmpty() || filter.contains(skill.status()))
+                .toList();
+    }
+
+    @Override
     public AgentSkill save(AgentSkill agentSkill) {
         AgentSkillJpaEntity entity;
         if (agentSkill.id() != null) {
-            // Update existing entity (mainly for deactivation)
             entity = repository.findById(agentSkill.id())
                     .orElseThrow(() -> new IllegalArgumentException("Entity not found: " + agentSkill.id()));
-            if (!agentSkill.active()) {
-                entity.deactivate();
-            }
+            entity.applyLifecycle(
+                    agentSkill.status(),
+                    agentSkill.shadowEvaluation(),
+                    agentSkill.statusReason(),
+                    agentSkill.statusChangedBy(),
+                    agentSkill.statusChangedAt()
+            );
         } else {
-            // Insert new entity
             entity = mapper.toEntity(agentSkill);
         }
         

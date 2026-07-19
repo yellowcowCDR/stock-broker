@@ -4,6 +4,7 @@ import com.hermes.broker.agent.application.port.in.EvolveAgentSkillCommand;
 import com.hermes.broker.agent.application.port.in.EvolveAgentSkillUseCase;
 import com.hermes.broker.agent.application.port.in.GetActiveAgentSkillUseCase;
 import com.hermes.broker.agent.application.port.in.InitializeAgentSkillUseCase;
+import com.hermes.broker.agent.application.port.in.GetAgentSkillVersionsUseCase;
 import com.hermes.broker.agent.application.port.out.LoadAgentSkillPort;
 import com.hermes.broker.agent.application.port.out.SaveAgentSkillPort;
 import com.hermes.broker.agent.domain.AgentSkill;
@@ -15,11 +16,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
+import java.util.List;
+import java.util.Set;
+import com.hermes.broker.agent.domain.AgentSkillStatus;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class AgentSkillService implements GetActiveAgentSkillUseCase, EvolveAgentSkillUseCase, InitializeAgentSkillUseCase {
+public class AgentSkillService implements GetActiveAgentSkillUseCase, EvolveAgentSkillUseCase,
+        InitializeAgentSkillUseCase, GetAgentSkillVersionsUseCase {
 
     private final LoadAgentSkillPort loadAgentSkillPort;
     private final SaveAgentSkillPort saveAgentSkillPort;
@@ -32,22 +37,33 @@ public class AgentSkillService implements GetActiveAgentSkillUseCase, EvolveAgen
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<AgentSkill> getVersions(Set<AgentSkillStatus> statuses) {
+        return loadAgentSkillPort.loadVersions(statuses == null ? Set.of() : Set.copyOf(statuses));
+    }
+
+    @Override
     @Transactional
     public AgentSkill evolve(EvolveAgentSkillCommand command) {
         if (command.skillParameters() == null || command.skillParameters().isEmpty()) {
             throw new InvalidAgentSkillParametersException("skillParameters cannot be null or empty");
         }
+        if (command.description() == null || command.description().isBlank()) {
+            throw new InvalidAgentSkillParametersException("description cannot be null or blank");
+        }
 
-        AgentSkill currentSkill = loadAgentSkillPort.loadActiveSkill()
+        AgentSkill activeSkill = loadAgentSkillPort.loadActiveSkill()
                 .orElseThrow(ActiveAgentSkillNotFoundException::new);
+        AgentSkill latestSkill = loadAgentSkillPort.loadLatestSkill()
+                .orElse(activeSkill);
 
-        AgentSkill deactivatedSkill = currentSkill.deactivate();
-        saveAgentSkillPort.save(deactivatedSkill);
-
-        AgentSkill newSkill = AgentSkill.createNextVersion(
-                currentSkill,
+        AgentSkill newSkill = AgentSkill.createCandidate(
+                latestSkill,
+                activeSkill,
                 command.description(),
-                command.skillParameters()
+                command.skillParameters(),
+                command.createdBy(),
+                java.time.Instant.now()
         );
         
         return saveAgentSkillPort.save(newSkill);

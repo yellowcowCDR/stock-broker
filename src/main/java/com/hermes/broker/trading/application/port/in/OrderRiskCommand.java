@@ -6,11 +6,15 @@ import com.hermes.broker.trading.domain.OrderType;
 import java.math.BigDecimal;
 
 public record OrderRiskCommand(
+        String accountKey,
         String stockCode,
+        String exchangeCode,
         MarketType marketType,
         OrderType orderType,
         BigDecimal price,
         BigDecimal quantity,
-        String sector
+        String sector,
+        String marketContextId,
+        BigDecimal marketRiskMultiplier
 ) {
 }

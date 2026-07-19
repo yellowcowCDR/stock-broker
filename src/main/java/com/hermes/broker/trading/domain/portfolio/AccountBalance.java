@@ -7,6 +7,11 @@ public record AccountBalance(
         BigDecimal cashAmount,
         BigDecimal totalEvaluationAmount,
         BigDecimal totalProfitLossAmount,
+        BigDecimal previousTotalAssetAmount,
+        BigDecimal dailyAssetChangeAmount,
+        BigDecimal dailyAssetChangeRate,
+        boolean dailyAssetChangeDataComplete,
+        String dailyAssetChangeDataSource,
         BigDecimal usdCash,
         BigDecimal usdBuyingPower
 ) {

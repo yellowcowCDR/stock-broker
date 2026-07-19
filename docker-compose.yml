@@ -8,10 +8,12 @@ services:
     container_name: stock-broker
     image: ghcr.io/yellowcowcdr/stock-broker:latest
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     # 절대 경로를 사용하시거나, docker-compose.yml과 같은 폴더에 있다면 아래처럼 상대 경로(.env)를 사용하셔도 무방합니다.
     env_file:
       - /home/chleofus6272000/app/stock-broker/.env
+    environment:
+      TZ: UTC
     restart: always
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]

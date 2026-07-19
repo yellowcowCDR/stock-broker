@@ -1,14 +1,58 @@
-# 자율형 퀀트 트레이딩 에이전트를 위한 통합 API 신규 개발 완료 보고
+# 자율형 퀀트 트레이딩 에이전트를 위한 통합 API 구현 현황
 
-요청하신 "작업지시서"에 따라 백엔드 API 확장 작업을 성공적으로 완료했습니다. Hexagonal Architecture의 원칙을 엄격하게 준수하여 구현했습니다.
+아래 목록은 API의 존재 여부와 실데이터 준비 상태를 구분합니다. 실데이터 집계가 완성되지 않은 기능은 합성 결과를 만들지 않고 fail-closed로 실패합니다.
 
 ## 1. 구현 요약
-- **구현한 API**:
-  - `GET /api/v1/broker/market/watchlist`: 관심 종목 탐색 (매수 신호가 아닌 후속 시장 분석을 위한 후보군 추출용, 현재는 Mock 데이터 기반 `CORE` 카테고리만 반환)
-  - `GET /api/v1/broker/market/price`: 현재가 조회에 기술적 지표(`TechnicalIndicators`) 결합
-  - `GET /api/v1/broker/market/news`: 종목별 뉴스 감성 분석 (Mock)
-  - `GET /api/v1/internal/agent/skills`: 현재 활성 전략 조회
-  - `PUT /api/v1/internal/agent/skills`: 전략 파라미터 업데이트 및 신규 버전 생성
+- **구현된 전체 API 목록**:
+  - **마켓(Market) 도메인** (`/api/v1/broker/market`)
+    - `GET /watchlist`: KIS 국내·미국 거래대금 순위 기반 분석 후보군. `candidateOnly=true`이며 매수 신호가 아님
+    - `GET /price`: KIS 현재가 조회. 실제 기술지표가 없으면 `technicalIndicators`를 비워 두며 임의 값을 생성하지 않음
+    - `GET /fundamentals`: 종목 기본적 분석(Fundamental) 지표 조회
+    - `GET /us-fundamentals`: Alpha Vantage 미국 재무제표·실적 이력·실적 캘린더. 정확한 발표 시각이 없으면 불완전으로 표시
+    - `GET /news`: Naver 뉴스 검색 API 기사와 규칙 기반 관련성·품질·감성 분석
+    - `GET /intelligence`: AI 기반 시장/종목 인텔리전스 조회
+    - `GET /status`: 현재 시장 개장 상태 조회
+    - `GET /overview`: KIS KOSPI·KOSDAQ 지수, breadth, 시장별 투자자 순매수 실데이터 조회
+    - `POST /order`: 신규 주문 접수 (에이전트용)
+    - `GET /daily-logs`: 일일 에이전트 활동 로그 조회
+  - **계좌 및 트레이딩(Account & Trading) 도메인**
+    - `GET /api/v1/broker/account/portfolio`: 현재 포트폴리오 잔고 조회
+    - `GET /api/v1/broker/account/overseas/us`: KIS 미국 계좌 USD 현금·사용가능액·매도가능수량 조회
+    - `GET /api/v1/broker/account/overseas/order-capacity`: 거래소·종목·주문가별 KIS 주문 가능 금액/수량 조회
+    - `GET /api/v1/broker/orders/open`: 미체결 주문 목록 조회
+    - `POST /api/v1/broker/orders/{orderId}/cancel`: 미체결 주문 취소
+    - `POST /api/v1/broker/trading/cycle/{stockCode}`: 특정 종목에 대한 트레이딩 사이클 수동 트리거
+  - **트레이딩 이력 및 회고(History & Reflection) 도메인** (`/api/v1/internal/trading`)
+    - `POST /market-contexts`: Hermes 분석 정책과 Broker가 재조회한 KIS overview 스냅샷 저장
+    - `GET /market-contexts/latest`: 시장별 최신 컨텍스트 조회
+    - `GET /market-contexts`: 시장별 컨텍스트 이력 조회
+    - `POST /features`: Hermes 분석 Feature를 Broker 생성 ID·UTC 시각·idempotency key로 저장
+    - `GET /features/latest`: 특정 종목의 최신 트레이딩 피처(Features) 조회
+    - `GET /features`: 트레이딩 피처 이력 조회
+    - `POST /decisions`: 현재 ACTIVE 전략의 BUY/SELL/HOLD/BLOCK 판단 저장
+    - `GET /decisions`: AI 에이전트의 트레이딩 의사결정 내역 조회
+    - `POST /shadow/decisions`: SHADOW 판단과 KIS 시작 quote 표본 저장; 주문 경로와 물리적으로 분리
+    - `POST /shadow/samples/settle`: 정규장 마감 후 KIS quote로 counterfactual 표본 결산
+    - `GET /shadow/samples`: 전략별 PENDING/COMPLETED 표본 조회
+    - `GET /reflections`: 트레이딩 회고(Reflection) 내역 조회
+    - `POST /reflections/run`: 시장·거래일별 Feature/Decision/context/order/KIS 비용/마감자산을 시점 기준으로 연결. 불완전하면 `503` fail-closed
+  - **에이전트 전략 및 관리(Agent Skill & Management) 도메인** (`/api/v1/internal/agent`)
+    - `GET /skills`: 현재 활성 전략 파라미터 조회
+    - `GET /skills/versions?status=CANDIDATE,SHADOW`: 이전 Cron 실행의 진행 전략을 최신 버전부터 조회
+    - `PUT /skills`: 호환용 Candidate 생성. 즉시 활성화는 차단
+    - `POST /skills/candidates`: 비활성 CANDIDATE 버전 생성
+    - `POST /skills/{version}/shadow/start`: CANDIDATE를 SHADOW로 전환
+    - `POST /skills/{version}/shadow/evaluate`: Broker DB의 실제 성과 표본만 평가
+    - `POST /skills/{version}/promote`: 적격 Shadow를 명시적 승인 후 ACTIVE로 승격
+    - `POST /skills/{version}/reject`: Candidate/Shadow 거절
+    - `POST /skills/{version}/performance/evaluate`: ACTIVE는 complete Reflection, SHADOW는 완료된 real-quote 표본으로 성과 집계
+    - `GET /skills/{version}/performance`: 특정 버전의 전략 성과 조회
+    - `GET /skills/{version}/rollback-evaluation`: 이전 버전 롤백 시 영향도 사전 평가
+    - `POST /skills/rollback`: 이전 ACTIVE 버전으로 명시적 승인 Rollback. PAPER 전용이며 LIVE는 차단
+    - `POST /reset`: PAPER 전용 관리 초기화. actor/reason/correlationId와 고정 확인문이 필요하며 LIVE에서는 삭제 전 차단
+  - **운영 모니터링** (`/api/v1/internal/operations`)
+    - `POST /cron-heartbeats`: Hermes Cron STARTED/SUCCEEDED/FAILED와 실제 다음 실행 슬롯 `expectedNextAt`을 Broker UTC 시각으로 저장
+    - `GET /status`: 공급자 장애, stale 데이터, Market Context, Kill Switch, 손실 한도, 주문 대사, DB 실패, Cron 누락 조회
 - **신규 생성 파일**:
   - `WatchlistStock`, `WatchlistCategory`, `TechnicalIndicators`, `StockNews`, `NewsSentiment`, `AgentSkill` 등 도메인 객체들
   - `GetMarketWatchlistUseCase`, `GetStockNewsUseCase`, `StockNewsSearchPort`, `LoadAgentSkillPort`, `SaveAgentSkillPort` 등 포트 (Port)
@@ -18,7 +62,7 @@
   - `AgentSkillDataInitializer` (ApplicationRunner - 부트스트랩)
 - **수정한 파일**:
   - `CurrentPriceDto`: `technicalIndicators` 필드 추가
-  - `MarketService`: 현재가 정보에 가상의 지표 매핑 로직 추가 (`createMockIndicators`)
+  - `MarketService`: KIS 현재가를 가공 없이 반환하며 합성 기술지표 생성 로직 제거
   - `GlobalExceptionHandler`: Custom 예외 매핑 추가 (`InvalidStockCodeException`, `ActiveAgentSkillNotFoundException` 등)
 - **추가한 Custom 예외**:
   - `InvalidStockCodeException` (400 Bad Request)
@@ -33,11 +77,19 @@
 - **Watchlist 역할 재정의**: 관심 종목 탐색 기능이 기존의 단순 핫한 종목 추적이 아닌, 에이전트의 **후속 분석 대상 후보군(Market Analysis Candidates)**을 선별하는 1차 필터로 동작하도록 변경했습니다. 
   - `WatchlistCategory` (CORE, MOMENTUM, MEAN_REVERSION, VOLUME_ANOMALY, EVENT, PORTFOLIO_RISK), `score`(0~100), `reasons`(선정 이유 리스트) 등의 필드를 `WatchlistStock`에 추가하여 향후 확장이 용이하도록 구성했습니다. Watchlist 결과만으로 주문을 실행하지 않도록 분리했습니다.
 - **Hexagonal Architecture 적용 방식**: Controller가 Repository나 Entity를 직접 참조하지 않도록 Service를 분리하고 In/Out Port를 통해 느슨하게 결합했습니다. 도메인 계층(Java record)과 영속성 계층(JPA Entity)을 분리하여 `AgentSkillPersistenceMapper`가 변환을 담당합니다.
-- **Agent Skill 버전 관리 방식**: `PUT` 요청이 올 경우 기존 활성 전략의 `isActive` 값을 `false`로 변경(비활성화)한 후, 기존 `version` + 1 값으로 새로운 Entity를 INSERT하여 이력을 유지하도록 트랜잭션을 묶었습니다.
+- **Agent Skill 버전 관리 방식**: 새 버전은 항상 `CANDIDATE`로 생성되며 기존 `ACTIVE` 전략을 유지합니다. `SHADOW` 성과가 Broker DB에 있고 최소 표본·평가일을 통과한 뒤, 승인 주체와 사유가 포함된 승격 요청만 `ACTIVE` 전환을 허용합니다.
+- **Hermes 판단 저장 경계**: Hermes는 먼저 Feature와 Decision 생성 API에서 Broker 생성 ID를 받고, BUY/SELL일 때만 그 ID로 주문 API를 호출합니다. 주문 API는 저장된 ACTIVE Decision과 종목·시장·방향·가격·수량·현재 ACTIVE 버전을 다시 대조합니다. HOLD/BLOCK/SHADOW/stale 전략은 KIS 호출 전에 거부합니다.
+- **Shadow 표본 경계**: SHADOW Decision은 주문으로 실행하지 않습니다. 판단 시점과 장 마감 후의 KIS quote를 별도 표본에 저장해 counterfactual 수익률을 계산하며, `shadow/evaluate`는 이 표본을 만들지 않고 이미 집계된 Broker 성과의 표본 수만 판정합니다.
 - **동시성 제어 방식**: "DDL 자동 생성에 의존"하신다는 피드백에 따라 `AgentSkillJpaEntity` 클래스 레벨에 `@Table(uniqueConstraints = ...)` 어노테이션으로 `version` 필드에 대한 Unique Constraint를 명시해 두었습니다. `isActive` 필드의 Partial Unique Index의 경우 Hibernate 자동 DDL로 완벽하게 구성하기에는 DBMS 의존성이 있으므로 운영 단계에서 V2 마이그레이션 스크립트를 통해 보완하는 것을 권장합니다.
 - **JSONB 매핑 방식**: Hibernate 6.x에서 지원하는 `@JdbcTypeCode(SqlTypes.JSON)` 어노테이션을 사용하여 데이터베이스의 `jsonb` 타입과 자바의 `Map<String, Object>`가 자동 매핑되도록 구현했습니다.
-- **Mock 데이터 생성 방식**: `Math.random()`을 지양하라는 규칙을 따라 `CurrentPrice`를 기준으로 고정 비율(`0.99`, `0.97`, `0.94`)을 곱하여 결정적(deterministic)인 값을 반환하도록 구성했습니다.
+- **실데이터 원칙**: KIS·Naver·OpenDART 또는 Broker DB의 완전한 데이터를 얻지 못하면 오류로 반환합니다. 고정 종목, 임의 시세, 합성 지표, 가짜 전략 성과로 대체하지 않습니다.
+- **시장 컨텍스트 안전 경계**: 신규 매수는 Broker DB에 같은 시장의 fresh context가 있어야 합니다. `BLOCK_NEW_ENTRIES`, 0 이하 배수, 만료된 overview/context는 KIS 주문 전에 차단하며 매도에는 이 진입 제한을 적용하지 않습니다.
+- **Risk 배수의 단방향성**: `riskMultiplier`는 0~1만 저장할 수 있고 최대 주문 금액을 축소하는 데만 사용되므로 Hermes가 Broker Risk Policy를 완화할 수 없습니다.
+- **Reflection 완전성**: 자율 주문은 `decisionId`, `featureId`, `strategyVersion`을 주문 로그에 보존합니다. HOLD/BLOCK도 당시 Feature와 Market Context를 연결하며, 미해결/부분체결 또는 비용 미정산 주문이 있으면 회고를 저장하지 않습니다.
+- **비용의 비합성 원칙**: KIS `prsm_tlex_smtl`은 주문 조회 범위의 추정 제비용 합계로 저장하고 수수료·세금으로 임의 분할하지 않습니다. 미국 환율/비용 정산이 없으면 미국 Reflection은 실패합니다.
+- **시장별 날짜**: DB timestamp는 UTC로 유지하되 국내 거래일은 `Asia/Seoul`, 미국 거래일은 `America/New_York`으로 분리합니다. 미국 DST는 IANA zone rule로 계산됩니다.
 
 ## 3. 주의사항 및 후속 작업
-- 외부 뉴스 API나 관심 종목 데이터에 대해 "특정 API를 염두에 두고 계시다"고 답변해 주셨습니다. 이번 작업에서는 Outbound Port(`StockNewsSearchPort`)까지만 설계 및 연동해 두었으며, 추후 해당 API의 인증 키나 스펙이 확정되면 `adapter.out.external` 계층에 어댑터를 추가하기만 하면 기존 비즈니스 로직 수정 없이 매끄럽게 연동이 가능합니다.
+- Watchlist는 KIS 거래대금 순위 API, 뉴스는 Naver 뉴스 검색 API, 국내 기업 데이터는 OpenDART에 연결되어 있습니다. 운영 환경에는 각 공급자의 실제 자격 증명이 필요합니다.
+- 해외 주문 가능 금액과 매도 가능 수량 및 미국 재무/실적 일정 조회는 구현됐지만, 원화/달러 환율 Risk 결합·해외 시장 컨텍스트·미국 주문 비용 정산이 완성되기 전까지 해외 신규 주문은 활성화하지 않습니다.
 - 테스트 환경이나 CI 서버의 Java 버전(`Unsupported class file major version 67` 오류 발생 시 Java 버전을 21 또는 17로 낮춰서 실행 필요)을 확인하시고 `./gradlew test`를 실행하시면 정상적으로 모든 테스트가 통과하는 것을 확인하실 수 있습니다.

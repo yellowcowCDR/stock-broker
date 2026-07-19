@@ -27,8 +27,9 @@ public class OrderController {
     public ResponseEntity<Void> cancelOrder(
             @PathVariable String orderId,
             @RequestParam String stockCode,
-            @RequestParam MarketType marketType) {
-        cancelOrderUseCase.cancelOrder(orderId, stockCode, marketType);
+            @RequestParam MarketType marketType,
+            @RequestHeader("Idempotency-Key") String idempotencyKey) {
+        cancelOrderUseCase.cancelOrder(orderId, stockCode, marketType, idempotencyKey);
         return ResponseEntity.ok().build();
     }
 }

@@ -8,6 +8,8 @@ import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
+import java.util.TimeZone;
+
 @OpenAPIDefinition(
     info = @Info(
         title = "Hermes Trading Broker API",
@@ -22,6 +24,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 public class HermesBrokerApplication {
 
     public static void main(String[] args) {
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
         SpringApplication.run(HermesBrokerApplication.class, args);
     }
 }

@@ -26,6 +26,7 @@ public class KisConfigurationValidator {
         log.info("Validating KIS Configuration...");
         validateProfileAndEnvironment();
         validateBaseUrl();
+        validateCredentials();
         validateRateLimit();
         validateTradingMode();
         log.info("KIS Configuration validation passed.");
@@ -55,6 +56,23 @@ public class KisConfigurationValidator {
         if (kisProperties.environment() == KisEnvironment.PRODUCTION && baseUrl.contains("openapivts")) {
             throw new IllegalStateException("PRODUCTION environment must NOT use openapivts base URL. Found: " + baseUrl);
         }
+    }
+
+    private void validateCredentials() {
+        if (kisProperties.api() == null
+                || isPlaceholder(kisProperties.api().appKey())
+                || isPlaceholder(kisProperties.api().appSecret())
+                || isPlaceholder(kisProperties.api().accountNo())) {
+            throw new IllegalStateException(
+                    "Real KIS credentials and account number are required; template placeholders are not allowed."
+            );
+        }
+    }
+
+    private boolean isPlaceholder(String value) {
+        return value == null || value.isBlank()
+                || value.startsWith("your_")
+                || "12345678-01".equals(value);
     }
 
     private void validateRateLimit() {

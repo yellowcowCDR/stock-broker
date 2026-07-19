@@ -21,7 +21,14 @@ import com.hermes.broker.common.property.KisEnvironment;
 import com.hermes.broker.market.adapter.out.external.interceptor.KisRestClientInterceptor;
 
 import java.math.BigDecimal;
-import java.util.Collections;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +37,7 @@ import com.hermes.broker.trading.application.port.out.LoadBuyingPowerPort;
 import com.hermes.broker.trading.application.port.out.LoadOpenOrdersPort;
 import com.hermes.broker.trading.application.port.out.LoadPortfolioPositionsPort;
 import com.hermes.broker.trading.application.port.out.CancelOrderPort;
+import com.hermes.broker.trading.application.port.out.SubmitOrderPort;
 import com.hermes.broker.trading.domain.portfolio.AccountBalance;
 import com.hermes.broker.trading.domain.portfolio.OpenOrder;
 import com.hermes.broker.trading.domain.portfolio.PortfolioPosition;
@@ -38,7 +46,7 @@ import com.hermes.broker.trading.domain.portfolio.PortfolioPosition;
 @Service
 @Primary
 @RequiredArgsConstructor
-public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccountBalancePort, LoadBuyingPowerPort, LoadPortfolioPositionsPort, LoadOpenOrdersPort, CancelOrderPort {
+public class KisDomesticTradingAdapter implements MarketTradingPort, SubmitOrderPort, LoadAccountBalancePort, LoadBuyingPowerPort, LoadPortfolioPositionsPort, LoadOpenOrdersPort, CancelOrderPort {
 
     private final RestClient.Builder restClientBuilder;
     private final KisHeaderProvider headerProvider;
@@ -52,6 +60,7 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
     private final KisProperties kisProperties;
     private final TradingProperties tradingProperties;
     private final KisRestClientInterceptor kisRestClientInterceptor;
+    private final Clock clock;
 
     private RestClient restClient;
 
@@ -108,8 +117,9 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
                     .retrieve()
                     .body(Map.class);
 
-            if (response == null || !response.containsKey("output")) {
-                throw new IllegalStateException("Failed to get current price for " + stockCode);
+            if (response == null || !"0".equals(response.get("rt_cd")) || !response.containsKey("output")) {
+                String message = response == null ? "empty response" : String.valueOf(response.get("msg1"));
+                throw new IllegalStateException("Failed to get current price for " + stockCode + ": " + message);
             }
 
             Map<String, String> output = (Map<String, String>) response.get("output");
@@ -131,10 +141,14 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
     @Override
     public OrderResponseDto placeOrder(OrderRequestDto orderRequest) {
         timeValidator.validateMarketOpen("DOMESTIC"); // 장 운영 시간 검증
-        validateOrderSafety(); // 실전 주문 안전 검증
+        validateOrderSafety(orderRequest); // 어댑터 직전 최종 안전 검증
         
-        // 매수: TTTC0802U, 매도: TTTC0801U
-        String trId = orderRequest.getOrderType() == OrderType.BUY ? "TTTC0802U" : "TTTC0801U";
+        String trId;
+        if (kisProperties.environment() == KisEnvironment.MOCK) {
+            trId = orderRequest.getOrderType() == OrderType.BUY ? "VTTC0802U" : "VTTC0801U";
+        } else {
+            trId = orderRequest.getOrderType() == OrderType.BUY ? "TTTC0802U" : "TTTC0801U";
+        }
 
         Map<String, Object> body = Map.of(
                 "CANO", getCano(), // 종합계좌번호(앞 8자리)
@@ -154,6 +168,9 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
                     .retrieve()
                     .body(Map.class);
 
+            if (response == null) {
+                throw new IllegalStateException("Empty KIS order response");
+            }
             boolean success = "0".equals(response.get("rt_cd"));
             String msg = (String) response.get("msg1");
 
@@ -171,30 +188,31 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
 
         } catch (Exception e) {
             log.error("Order failed for {}", orderRequest.getStockCode(), e);
-            return OrderResponseDto.builder()
-                    .success(false)
-                    .message("Exception occurred: " + e.getMessage())
-                    .build();
+            throw new RuntimeException("KIS order result could not be confirmed", e);
         }
     }
 
-    private void validateOrderSafety() {
+    private void validateOrderSafety(OrderRequestDto orderRequest) {
+        validateOrderAccess();
+        if (orderRequest.getOrderType() == OrderType.BUY
+                && (tradingProperties.killSwitch() == null || tradingProperties.killSwitch().enabled())) {
+            throw new IllegalStateException("Entry kill switch is active. New BUY orders are blocked.");
+        }
+    }
+
+    private void validateOrderAccess() {
         if (kisProperties.environment() == KisEnvironment.PRODUCTION) {
             boolean realOrderEnabled = tradingProperties.realOrder() != null && tradingProperties.realOrder().enabled();
-            boolean killSwitchEnabled = tradingProperties.killSwitch() == null || tradingProperties.killSwitch().enabled();
 
             if (!realOrderEnabled) {
                 throw new IllegalStateException("Real orders are disabled in configuration.");
-            }
-            if (killSwitchEnabled) {
-                throw new IllegalStateException("Kill switch is active. Real orders are blocked.");
             }
         }
     }
 
     @Override
     public PortfolioDto getPortfolio() {
-        String trId = "TTTC8434R"; // 주식 잔고조회
+        String trId = kisProperties.environment() == KisEnvironment.MOCK ? "VTTC8434R" : "TTTC8434R";
 
         try {
             Map response = restClient.get()
@@ -216,14 +234,21 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
                     .retrieve()
                     .body(Map.class);
 
-            if (response == null || !response.containsKey("output2")) {
-                throw new IllegalStateException("Failed to get portfolio");
+            if (response == null || !"0".equals(response.get("rt_cd"))
+                    || !(response.get("output1") instanceof List<?>)
+                    || !(response.get("output2") instanceof List<?>)) {
+                String message = response == null ? "empty response" : String.valueOf(response.get("msg1"));
+                throw new IllegalStateException("Failed to get KIS portfolio: " + message);
             }
 
             List<Map<String, String>> output1 = (List<Map<String, String>>) response.get("output1"); // 개별 종목 잔고
             List<Map<String, String>> output2 = (List<Map<String, String>>) response.get("output2"); // 계좌 요약
             
+            if (output2.isEmpty()) {
+                throw new IllegalStateException("KIS portfolio response has no account summary.");
+            }
             Map<String, String> accountSummary = output2.get(0);
+            DailyAssetChangeData dailyAssetChange = toDailyAssetChangeData(accountSummary);
 
             List<PortfolioDto.StockHolding> holdings = output1.stream()
                     .map(item -> PortfolioDto.StockHolding.builder()
@@ -239,6 +264,13 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
             return PortfolioDto.builder()
                     .totalAsset(new BigDecimal(accountSummary.get("tot_evlu_amt"))) // 총 평가 금액
                     .availableCash(new BigDecimal(accountSummary.get("dnca_tot_amt"))) // 예수금 총액
+                    .totalEvaluationAmount(requiredDecimal(accountSummary, "evlu_amt_smtl_amt"))
+                    .totalProfitLossAmount(requiredDecimal(accountSummary, "evlu_pfls_smtl_amt"))
+                    .previousTotalAssetAmount(dailyAssetChange.previousTotalAssetAmount())
+                    .dailyAssetChangeAmount(dailyAssetChange.amount())
+                    .dailyAssetChangeRate(dailyAssetChange.rate())
+                    .dailyAssetChangeDataComplete(dailyAssetChange.complete())
+                    .dailyAssetChangeDataSource(dailyAssetChange.dataSource())
                     .holdings(holdings)
                     .build();
 
@@ -254,10 +286,15 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
         return new AccountBalance(
                 domestic.getTotalAsset(),
                 domestic.getAvailableCash(),
-                domestic.getTotalAsset(), // assuming evalAmt is totalAsset?
-                BigDecimal.ZERO,
-                domestic.getUsdCash() != null ? domestic.getUsdCash() : BigDecimal.ZERO,
-                domestic.getUsdBuyingPower() != null ? domestic.getUsdBuyingPower() : BigDecimal.ZERO
+                domestic.getTotalEvaluationAmount(),
+                domestic.getTotalProfitLossAmount(),
+                domestic.getPreviousTotalAssetAmount(),
+                domestic.getDailyAssetChangeAmount(),
+                domestic.getDailyAssetChangeRate(),
+                domestic.isDailyAssetChangeDataComplete(),
+                domestic.getDailyAssetChangeDataSource(),
+                null,
+                null
         );
     }
 
@@ -265,7 +302,7 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
 
     @Override
     public BigDecimal loadBuyingPower() {
-        String trId = "TTTC8908R"; // 국내주식 매수가능조회
+        String trId = kisProperties.environment() == KisEnvironment.MOCK ? "VTTC8908R" : "TTTC8908R";
         
         try {
             Map response = restClient.get()
@@ -283,28 +320,28 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
                     .retrieve()
                     .body(Map.class);
 
-            if (response == null || !response.containsKey("output")) {
-                log.warn("Failed to get domestic buying power, output is missing");
-                return BigDecimal.ZERO;
+            if (response == null || !"0".equals(response.get("rt_cd")) || !response.containsKey("output")) {
+                String message = response == null ? "empty response" : String.valueOf(response.get("msg1"));
+                throw new IllegalStateException("KIS domestic buying-power lookup failed: " + message);
             }
 
             Map<String, String> output = (Map<String, String>) response.get("output");
             String buyingPowerStr = output.get("nrcvb_buy_amt"); // 미수 없는 실제 매수 가능 금액
             if (buyingPowerStr == null || buyingPowerStr.isEmpty()) {
-                buyingPowerStr = "0";
+                throw new IllegalStateException("KIS domestic buying-power amount is missing.");
             }
             
             return new BigDecimal(buyingPowerStr);
 
         } catch (Exception e) {
             log.error("Error occurred while fetching domestic buying power", e);
-            return BigDecimal.ZERO;
+            throw new IllegalStateException("Domestic buying-power lookup failed.", e);
         }
     }
 
     @Override
     public List<PortfolioPosition> loadPositions() {
-        String trId = "TTTC8434R"; 
+        String trId = kisProperties.environment() == KisEnvironment.MOCK ? "VTTC8434R" : "TTTC8434R";
         try {
             Map response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -325,8 +362,10 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
                     .retrieve()
                     .body(Map.class);
 
-            if (response == null || !response.containsKey("output1")) {
-                return Collections.emptyList();
+            if (response == null || !"0".equals(response.get("rt_cd"))
+                    || !(response.get("output1") instanceof List<?>)) {
+                String message = response == null ? "empty response" : String.valueOf(response.get("msg1"));
+                throw new IllegalStateException("KIS positions lookup failed: " + message);
             }
 
             List<Map<String, String>> output1 = (List<Map<String, String>>) response.get("output1");
@@ -348,19 +387,162 @@ public class KisDomesticTradingAdapter implements MarketTradingPort, LoadAccount
                     .toList();
         } catch (Exception e) {
             log.error("loadPositions error", e);
-            return Collections.emptyList();
+            throw new IllegalStateException("Domestic positions lookup failed.", e);
         }
     }
 
     @Override
     public List<OpenOrder> loadOpenOrders() {
-        log.info("[KIS Domestic] Loading open orders...");
-        return Collections.emptyList();
+        ZonedDateTime seoulNow = ZonedDateTime.now(clock.withZone(ZoneId.of("Asia/Seoul")));
+        String date = seoulNow.toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
+        String trId = kisProperties.environment() == KisEnvironment.MOCK ? "VTTC0081R" : "TTTC0081R";
+
+        Map response = restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/uapi/domestic-stock/v1/trading/inquire-daily-ccld")
+                        .queryParam("CANO", getCano())
+                        .queryParam("ACNT_PRDT_CD", getAcntPrdtCd())
+                        .queryParam("INQR_STRT_DT", date)
+                        .queryParam("INQR_END_DT", date)
+                        .queryParam("SLL_BUY_DVSN_CD", "00")
+                        .queryParam("INQR_DVSN", "00")
+                        .queryParam("PDNO", "")
+                        .queryParam("CCLD_DVSN", "02")
+                        .queryParam("ORD_GNO_BRNO", "")
+                        .queryParam("ODNO", "")
+                        .queryParam("INQR_DVSN_3", "00")
+                        .queryParam("INQR_FI_USG_QN", "")
+                        .queryParam("CTX_AREA_FK100", "")
+                        .queryParam("CTX_AREA_NK100", "")
+                        .build())
+                .headers(headerProvider.createCommonHeaders(trId))
+                .retrieve()
+                .body(Map.class);
+
+        if (response == null || !"0".equals(response.get("rt_cd")) || !response.containsKey("output1")) {
+            String message = response == null ? "empty response" : String.valueOf(response.get("msg1"));
+            throw new IllegalStateException("Unable to verify KIS open orders: " + message);
+        }
+
+        List<Map<String, String>> rows = (List<Map<String, String>>) response.get("output1");
+        return rows.stream()
+                .map(this::toOpenOrder)
+                .filter(order -> order.quantity().compareTo(order.executedQuantity()) > 0)
+                .toList();
+    }
+
+    private OpenOrder toOpenOrder(Map<String, String> row) {
+        String office = requiredFirstNonBlank(row.get("ord_gno_brno"), row.get("krx_fwdg_ord_orgno"), "order office");
+        String orderNo = requiredFirstNonBlank(row.get("odno"), row.get("ODNO"), "order number");
+        BigDecimal quantity = requiredDecimal(row, "ord_qty");
+        BigDecimal executedQuantity = requiredDecimal(row, "tot_ccld_qty");
+        OrderType orderType = "01".equals(row.get("sll_buy_dvsn_cd")) ? OrderType.SELL : OrderType.BUY;
+        return new OpenOrder(
+                office + "-" + orderNo,
+                row.get("pdno"),
+                MarketType.DOMESTIC,
+                orderType,
+                requiredDecimal(row, "ord_unpr"),
+                quantity,
+                executedQuantity,
+                parseOrderedAt(row.get("ord_dt"), row.get("ord_tmd"))
+        );
+    }
+
+    private Instant parseOrderedAt(String date, String time) {
+        try {
+            LocalDate parsedDate = LocalDate.parse(date, DateTimeFormatter.BASIC_ISO_DATE);
+            LocalTime parsedTime = LocalTime.parse(time, DateTimeFormatter.ofPattern("HHmmss"));
+            return LocalDateTime.of(parsedDate, parsedTime)
+                    .atZone(ZoneId.of("Asia/Seoul"))
+                    .toInstant();
+        } catch (Exception ignored) {
+            throw new IllegalStateException("KIS order timestamp is invalid: " + date + " " + time);
+        }
+    }
+
+    private BigDecimal requiredDecimal(Map<String, String> row, String key) {
+        String value = row.get(key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("KIS response is missing numeric field: " + key);
+        }
+        return new BigDecimal(value.replace(",", ""));
+    }
+
+    static DailyAssetChangeData toDailyAssetChangeData(Map<String, String> accountSummary) {
+        BigDecimal previousTotalAsset = nullableDecimal(accountSummary, "bfdy_tot_asst_evlu_amt");
+        BigDecimal amount = nullableDecimal(accountSummary, "asst_icdc_amt");
+        BigDecimal percent = nullableDecimal(accountSummary, "asst_icdc_erng_rt");
+        boolean complete = previousTotalAsset != null && amount != null && percent != null;
+        return new DailyAssetChangeData(
+                previousTotalAsset,
+                amount,
+                percent == null ? null : percent.movePointLeft(2),
+                complete,
+                complete ? "KIS_OPEN_API:INQUIRE_BALANCE:ASST_ICDC" : null
+        );
+    }
+
+    private static BigDecimal nullableDecimal(Map<String, String> row, String key) {
+        String value = row.get(key);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return new BigDecimal(value.replace(",", ""));
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException("KIS response field is not numeric: " + key, e);
+        }
+    }
+
+    private String requiredFirstNonBlank(String first, String second, String field) {
+        if (first != null && !first.isBlank()) return first;
+        if (second != null && !second.isBlank()) return second;
+        throw new IllegalStateException("KIS response is missing " + field + ".");
+    }
+
+    record DailyAssetChangeData(
+            BigDecimal previousTotalAssetAmount,
+            BigDecimal amount,
+            BigDecimal rate,
+            boolean complete,
+            String dataSource
+    ) {
     }
 
     @Override
     public void cancelOrder(String orderId, String stockCode, MarketType marketType) {
-        log.info("[KIS Domestic] Canceling order... orderId={}, stockCode={}", orderId, stockCode);
-        // 실제 KIS 한국투자증권 API 취소 호출 구현
+        if (marketType != MarketType.DOMESTIC) {
+            throw new UnsupportedOperationException("Domestic adapter cannot cancel " + marketType + " orders");
+        }
+        String[] parts = orderId.split("-", 2);
+        if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+            throw new IllegalArgumentException("Invalid domestic KIS order id: " + orderId);
+        }
+
+        String trId = kisProperties.environment() == KisEnvironment.MOCK ? "VTTC0803U" : "TTTC0803U";
+        Map<String, Object> body = Map.of(
+                "CANO", getCano(),
+                "ACNT_PRDT_CD", getAcntPrdtCd(),
+                "KRX_FWDG_ORD_ORGNO", parts[0],
+                "ORGN_ODNO", parts[1],
+                "ORD_DVSN", "00",
+                "RVSE_CNCL_DVSN_CD", "02",
+                "ORD_QTY", "0",
+                "ORD_UNPR", "0",
+                "QTY_ALL_ORD_YN", "Y"
+        );
+
+        Map response = restClient.post()
+                .uri("/uapi/domestic-stock/v1/trading/order-rvsecncl")
+                .headers(headerProvider.createCommonHeaders(trId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(Map.class);
+        if (response == null || !"0".equals(response.get("rt_cd"))) {
+            String message = response == null ? "Empty KIS cancellation response" : String.valueOf(response.get("msg1"));
+            throw new IllegalStateException("KIS cancellation rejected: " + message);
+        }
     }
 }

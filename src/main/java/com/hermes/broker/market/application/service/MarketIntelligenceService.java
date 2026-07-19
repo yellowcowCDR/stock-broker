@@ -29,7 +29,7 @@ public class MarketIntelligenceService implements MarketIntelligenceUseCase {
             searchKeyword = fundamentals.profile().stockName();
         }
         
-        NewsResponseDto news = marketNewsUseCase.getNews(searchKeyword);
+        NewsResponseDto news = marketNewsUseCase.getNews(stockCode, searchKeyword);
 
         StockIntelligence intelligence = new StockIntelligence(
                 stockCode,

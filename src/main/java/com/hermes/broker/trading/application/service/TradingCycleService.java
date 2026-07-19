@@ -1,10 +1,10 @@
 package com.hermes.broker.trading.application.service;
 
 import com.hermes.broker.market.application.port.in.MarketIntelligenceUseCase;
-import com.hermes.broker.market.application.port.out.MarketTradingPort;
+import com.hermes.broker.market.application.port.out.LoadMarketContextPort;
+import com.hermes.broker.market.domain.MarketContext;
 import com.hermes.broker.market.dto.response.IntelligenceResponseDto;
-import com.hermes.broker.trading.application.port.in.EvaluateOrderRiskUseCase;
-import com.hermes.broker.trading.application.port.in.OrderRiskCommand;
+import com.hermes.broker.trading.application.port.in.AgentTradingUseCase;
 import com.hermes.broker.trading.application.port.in.RunTradingCycleUseCase;
 import com.hermes.broker.trading.application.port.in.SaveTradingDecisionUseCase;
 import com.hermes.broker.trading.application.port.in.SaveTradingFeatureUseCase;
@@ -14,8 +14,6 @@ import com.hermes.broker.trading.domain.decision.TradingCycleResult;
 import com.hermes.broker.trading.domain.decision.TradingDecision;
 import com.hermes.broker.trading.domain.decision.TradingDecisionType;
 import com.hermes.broker.trading.domain.decision.TradingFeatureSnapshot;
-import com.hermes.broker.trading.domain.risk.RiskDecision;
-import com.hermes.broker.trading.domain.risk.RiskEvaluationResult;
 import com.hermes.broker.trading.dto.OrderRequestDto;
 import com.hermes.broker.trading.dto.OrderResponseDto;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -35,10 +33,10 @@ public class TradingCycleService implements RunTradingCycleUseCase {
 
     private final MarketIntelligenceUseCase marketIntelligenceUseCase;
     private final SaveTradingFeatureUseCase saveTradingFeatureUseCase;
+    private final LoadMarketContextPort loadMarketContextPort;
     private final InvokeAgentDecisionPort invokeAgentDecisionPort;
-    private final EvaluateOrderRiskUseCase evaluateOrderRiskUseCase;
     private final SaveTradingDecisionUseCase saveTradingDecisionUseCase;
-    private final MarketTradingPort marketTradingPort;
+    private final AgentTradingUseCase agentTradingUseCase;
 
     @Override
     public TradingCycleResult runForStock(String stockCode) {
@@ -49,87 +47,76 @@ public class TradingCycleService implements RunTradingCycleUseCase {
             
             Map<String, Object> techFeatures = new HashMap<>();
             Map<String, Object> newsFeatures = new HashMap<>();
+            Map<String, Object> riskFeatures = new HashMap<>();
             
             if (intelligenceDto != null && intelligenceDto.intelligence() != null) {
                 techFeatures.put("profile", intelligenceDto.intelligence().profile());
                 newsFeatures.put("news", intelligenceDto.intelligence().newsAnalysis());
             }
 
+            loadMarketContextPort.loadLatest(com.hermes.broker.trading.domain.MarketType.DOMESTIC)
+                    .ifPresent(context -> addMarketContextAudit(riskFeatures, context));
+
             // 2. Snapshot 생성 및 저장
             TradingFeatureSnapshot snapshot = new TradingFeatureSnapshot(
                     UUID.randomUUID().toString(),
                     stockCode,
+                    com.hermes.broker.trading.domain.MarketType.DOMESTIC,
                     techFeatures,
                     newsFeatures,
-                    new HashMap<>(), // Risk Features can be added here
-                    LocalDateTime.now()
+                    riskFeatures,
+                    Instant.now()
             );
             saveTradingFeatureUseCase.save(snapshot);
 
-            // 3. Agent 판단 (임시 더미 에이전트 구현이 포트 어댑터 쪽에 필요)
+            // 3. Broker에는 내장 매매 판단기가 없으므로 기본 어댑터는 BLOCK을 반환한다.
             TradingDecision initialDecision = invokeAgentDecisionPort.invoke(snapshot);
+            saveTradingDecisionUseCase.save(initialDecision);
 
             // 판단이 HOLD나 BLOCK이면 바로 종료
             if (initialDecision.decisionType() == TradingDecisionType.HOLD || initialDecision.decisionType() == TradingDecisionType.BLOCK) {
-                saveTradingDecisionUseCase.save(initialDecision);
-                return new TradingCycleResult(stockCode, true, "Decision is " + initialDecision.decisionType(), initialDecision, LocalDateTime.now());
+                return new TradingCycleResult(stockCode, true, "Decision is " + initialDecision.decisionType(), initialDecision, Instant.now());
             }
 
-            // 4. 리스크 검증 (BUY 또는 SELL)
+            // 4. 주문 실행. Risk/환경/시장/idempotency 검증은 공통 주문 파이프라인이 전담한다.
             OrderType orderType = initialDecision.decisionType() == TradingDecisionType.BUY ? OrderType.BUY : OrderType.SELL;
-            OrderRiskCommand riskCommand = new OrderRiskCommand(
-                    stockCode,
-                    com.hermes.broker.trading.domain.MarketType.DOMESTIC,
-                    orderType,
-                    initialDecision.recommendedPrice(),
-                    initialDecision.recommendedQuantity(),
-                    "UNKNOWN"
-            );
-            
-            RiskEvaluationResult riskResult = evaluateOrderRiskUseCase.evaluate(riskCommand);
-            
-            TradingDecision finalDecision;
-            if (riskResult.allowed()) {
-                finalDecision = initialDecision;
-                
-                // 5. 주문 실행
-                OrderRequestDto orderReq = OrderRequestDto.builder()
-                        .stockCode(stockCode)
-                        .orderType(orderType)
-                        .price(finalDecision.recommendedPrice())
-                        .quantity(finalDecision.recommendedQuantity().intValue())
-                        .build();
-                        
-                OrderResponseDto orderResp = marketTradingPort.placeOrder(orderReq);
-                if (orderResp.isSuccess()) {
-                    log.info("Order placed successfully for {}", stockCode);
-                } else {
-                    log.warn("Order failed for {}: {}", stockCode, orderResp.getMessage());
-                    // 실제 환경에선 부분 체결/실패에 대한 상태를 업데이트해야 하지만, 현재 Decision만 업데이트
-                }
-            } else {
-                // 리스크에서 차단된 경우, BLOCK으로 덮어씀
-                finalDecision = new TradingDecision(
-                        initialDecision.decisionId(),
-                        initialDecision.featureId(),
-                        initialDecision.stockCode(),
-                        TradingDecisionType.BLOCK,
-                        initialDecision.strategyVersion(),
-                        String.join(", ", riskResult.reasons()),
-                        initialDecision.recommendedPrice(),
-                        initialDecision.recommendedQuantity(),
-                        LocalDateTime.now()
-                );
-            }
+            OrderRequestDto orderReq = OrderRequestDto.builder()
+                    .marketType(com.hermes.broker.trading.domain.MarketType.DOMESTIC)
+                    .stockCode(stockCode)
+                    .orderType(orderType)
+                    .price(initialDecision.recommendedPrice())
+                    .quantity(initialDecision.recommendedQuantity().intValue())
+                    .idempotencyKey("trading-cycle:" + initialDecision.decisionId())
+                    .decisionId(initialDecision.decisionId())
+                    .featureId(initialDecision.featureId())
+                    .strategyVersion(initialDecision.strategyVersion())
+                    .decisionReason(initialDecision.reason())
+                    .build();
 
-            // 6. 최종 판단 결과 저장
-            saveTradingDecisionUseCase.save(finalDecision);
-            
-            return new TradingCycleResult(stockCode, true, "Cycle completed", finalDecision, LocalDateTime.now());
+            OrderResponseDto orderResp = agentTradingUseCase.placeOrder(orderReq);
+            if (orderResp.isSuccess()) {
+                log.info("Order placed successfully for {}", stockCode);
+            } else {
+                log.warn("Order blocked or failed for {}: {}", stockCode, orderResp.getMessage());
+            }
+            return new TradingCycleResult(stockCode, true,
+                    orderResp.isSuccess() ? "Cycle completed" : "Order blocked: " + orderResp.getMessage(),
+                    initialDecision, Instant.now());
 
         } catch (Exception e) {
             log.error("Failed to run trading cycle for {}", stockCode, e);
-            return new TradingCycleResult(stockCode, false, e.getMessage(), null, LocalDateTime.now());
+            return new TradingCycleResult(stockCode, false, e.getMessage(), null, Instant.now());
         }
+    }
+
+    private void addMarketContextAudit(Map<String, Object> riskFeatures, MarketContext context) {
+        riskFeatures.put("marketContextId", context.contextId());
+        riskFeatures.put("marketContextAnalyzedAt", context.analyzedAt());
+        riskFeatures.put("marketContextValidUntil", context.validUntil());
+        riskFeatures.put("marketEntryPolicy", context.entryPolicy().name());
+        riskFeatures.put("marketRiskMultiplier", context.riskMultiplier());
+        riskFeatures.put("marketOverviewDataSource", context.overviewSnapshot().dataSource());
+        riskFeatures.put("marketOverviewFetchedAt", context.overviewSnapshot().fetchedAt());
+        riskFeatures.put("marketOverviewComplete", context.overviewSnapshot().complete());
     }
 }

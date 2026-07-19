@@ -1,16 +1,21 @@
 package com.hermes.broker.trading.adapter.out.persistence;
 
 import com.hermes.broker.trading.domain.decision.TradingDecisionType;
+import com.hermes.broker.trading.domain.decision.TradingDecisionMode;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "trading_decision")
+@Table(name = "trading_decision", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_trading_decision_idempotency_ddl", columnNames = "idempotency_key"),
+        @UniqueConstraint(name = "uk_trading_decision_feature_strategy_mode_ddl",
+                columnNames = {"feature_id", "strategy_version", "decision_mode"})
+})
 @Getter
 @Setter
 public class TradingDecisionJpaEntity {
@@ -42,12 +47,19 @@ public class TradingDecisionJpaEntity {
     private BigDecimal recommendedQuantity;
 
     @Column(name = "decided_at", nullable = false)
-    private LocalDateTime decidedAt;
+    private Instant decidedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "decision_mode", length = 20, nullable = false)
+    private TradingDecisionMode mode = TradingDecisionMode.ACTIVE;
+
+    @Column(name = "idempotency_key", length = 160)
+    private String idempotencyKey;
 
     @PrePersist
     protected void onCreate() {
         if (this.decidedAt == null) {
-            this.decidedAt = LocalDateTime.now();
+            this.decidedAt = Instant.now();
         }
     }
 }

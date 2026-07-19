@@ -8,6 +8,7 @@ import com.hermes.broker.agent.domain.AgentSkillPerformance;
 import com.hermes.broker.agent.domain.StrategyRollbackEvaluation;
 import com.hermes.broker.agent.dto.RollbackRequestDto;
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,8 +38,9 @@ public class StrategyManagementController {
     }
 
     @PostMapping("/rollback")
-    public ResponseEntity<Void> rollback(@RequestBody RollbackRequestDto request) {
-        rollbackAgentSkillUseCase.rollback(request.targetVersion(), null, request.reason());
-        return ResponseEntity.ok().build();
+    public ResponseEntity<AgentSkillResponse> rollback(@Valid @RequestBody RollbackRequestDto request) {
+        return ResponseEntity.ok(AgentSkillResponse.from(
+                rollbackAgentSkillUseCase.rollback(
+                        request.targetVersion(), request.approvedBy(), request.reason())));
     }
 }

@@ -1,11 +1,13 @@
 package com.hermes.broker.trading.application.service;
 
+import com.hermes.broker.common.exception.DataPipelineUnavailableException;
+import com.hermes.broker.common.exception.MarketDataUnavailableException;
+import com.hermes.broker.market.application.service.StockSectorResolver;
+import com.hermes.broker.market.domain.StockSector;
 import com.hermes.broker.trading.application.port.in.GetPortfolioSummaryUseCase;
 import com.hermes.broker.trading.application.port.out.LoadAccountBalancePort;
 import com.hermes.broker.trading.application.port.out.LoadBuyingPowerPort;
 import com.hermes.broker.trading.application.port.out.LoadPortfolioPositionsPort;
-import com.hermes.broker.trading.application.port.out.LoadOverseasBalancePort;
-import com.hermes.broker.trading.domain.portfolio.OverseasBalance;
 import com.hermes.broker.trading.domain.portfolio.AccountBalance;
 import com.hermes.broker.trading.domain.portfolio.PortfolioPosition;
 import com.hermes.broker.trading.domain.portfolio.PortfolioSummary;
@@ -16,7 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDateTime;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -29,20 +31,25 @@ public class PortfolioManagementService implements GetPortfolioSummaryUseCase {
     private final LoadAccountBalancePort loadAccountBalancePort;
     private final LoadPortfolioPositionsPort loadPortfolioPositionsPort;
     private final LoadBuyingPowerPort loadBuyingPowerPort;
-    private final LoadOverseasBalancePort loadOverseasBalancePort;
+    private final Clock clock;
+    private final StockSectorResolver stockSectorResolver;
 
     @Override
     public PortfolioSummary getPortfolioSummary() {
         AccountBalance balance = loadAccountBalancePort.loadBalance();
         List<PortfolioPosition> positions = loadPortfolioPositionsPort.loadPositions();
         BigDecimal buyingPower = loadBuyingPowerPort.loadBuyingPower();
-        OverseasBalance overseasBalance = loadOverseasBalancePort.loadOverseasBalance();
+        requireRealBalance(balance, positions, buyingPower);
 
-        BigDecimal totalAssetAmount = balance.totalAssetAmount() != null ? balance.totalAssetAmount() : BigDecimal.ZERO;
-        BigDecimal cashAmount = balance.cashAmount() != null ? balance.cashAmount() : BigDecimal.ZERO;
+        BigDecimal totalAssetAmount = balance.totalAssetAmount();
+        BigDecimal cashAmount = balance.cashAmount();
+        SectorEnrichment sectorEnrichment = enrichSectors(positions, totalAssetAmount);
+        positions = sectorEnrichment.positions();
         
-        BigDecimal usdCash = overseasBalance.usdCash() != null ? overseasBalance.usdCash() : BigDecimal.ZERO;
-        BigDecimal usdBuyingPower = overseasBalance.usdBuyingPower() != null ? overseasBalance.usdBuyingPower() : BigDecimal.ZERO;
+        // KRW and USD assets are intentionally not aggregated without an audited FX snapshot.
+        // Overseas order risk uses LoadOverseasAccountDataPort directly.
+        BigDecimal usdCash = null;
+        BigDecimal usdBuyingPower = null;
         
         // Calculate cash rate
         BigDecimal cashRate = BigDecimal.ZERO;
@@ -71,11 +78,6 @@ public class PortfolioManagementService implements GetPortfolioSummaryUseCase {
                 })
                 .toList();
 
-        // Check if dailyProfitLossAmount is available in balance, otherwise it's just the sum of positions' profitLossAmount
-        // Assuming we calculate daily by some other means if not provided directly, for now we will just use 0 or something from balance.
-        // I will set it to ZERO since AccountBalance doesn't explicitly have it right now unless we extend it.
-        BigDecimal dailyProfitLossAmount = BigDecimal.ZERO; 
-
         return new PortfolioSummary(
                 totalAssetAmount,
                 cashAmount,
@@ -84,12 +86,80 @@ public class PortfolioManagementService implements GetPortfolioSummaryUseCase {
                 usdBuyingPower,
                 balance.totalEvaluationAmount(),
                 balance.totalProfitLossAmount(),
-                dailyProfitLossAmount,
+                balance.previousTotalAssetAmount(),
+                balance.dailyAssetChangeAmount(),
+                balance.dailyAssetChangeRate(),
+                balance.dailyAssetChangeDataComplete(),
+                balance.dailyAssetChangeDataSource(),
                 cashRate,
                 positions.size(),
                 positions,
                 sectorExposures,
-                LocalDateTime.now()
+                sectorEnrichment.complete(),
+                sectorEnrichment.dataSource(),
+                clock.instant()
         );
+    }
+
+    private SectorEnrichment enrichSectors(
+            List<PortfolioPosition> positions, BigDecimal totalAssetAmount) {
+        boolean complete = true;
+        String dataSource = positions.isEmpty()
+                ? "NOT_APPLICABLE_NO_POSITIONS" : "KIS_OPEN_API:SEARCH_STOCK_INFO";
+        java.util.ArrayList<PortfolioPosition> enriched = new java.util.ArrayList<>();
+
+        for (PortfolioPosition position : positions) {
+            String sector;
+            try {
+                StockSector metadata = stockSectorResolver.resolve(
+                        position.stockCode(), position.marketType());
+                sector = metadata.sectorName();
+            } catch (MarketDataUnavailableException e) {
+                complete = false;
+                sector = "UNKNOWN";
+                log.warn("Sector data unavailable for {}:{}: {}",
+                        position.marketType(), position.stockCode(), e.getMessage());
+            }
+
+            BigDecimal weight = BigDecimal.ZERO;
+            if (totalAssetAmount.signum() > 0 && position.evaluationAmount() != null) {
+                weight = position.evaluationAmount().divide(totalAssetAmount, 4, RoundingMode.HALF_UP);
+            }
+            enriched.add(new PortfolioPosition(
+                    position.stockCode(),
+                    position.stockName(),
+                    position.marketType(),
+                    sector,
+                    position.quantity(),
+                    position.availableQuantity(),
+                    position.averagePurchasePrice(),
+                    position.currentPrice(),
+                    position.evaluationAmount(),
+                    position.profitLossAmount(),
+                    position.profitLossRate(),
+                    weight
+            ));
+        }
+        return new SectorEnrichment(List.copyOf(enriched), complete, dataSource);
+    }
+
+    private void requireRealBalance(
+            AccountBalance balance,
+            List<PortfolioPosition> positions,
+            BigDecimal buyingPower) {
+        if (balance == null || balance.totalAssetAmount() == null || balance.cashAmount() == null
+                || balance.totalEvaluationAmount() == null || balance.totalProfitLossAmount() == null
+                || positions == null || buyingPower == null) {
+            throw new DataPipelineUnavailableException(
+                    "KIS account balance, positions and domestic buying power must all be complete."
+            );
+        }
+    }
+
+    private record SectorEnrichment(
+            List<PortfolioPosition> positions,
+            boolean complete,
+            String dataSource
+    ) {
     }
 }

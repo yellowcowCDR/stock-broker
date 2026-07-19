@@ -29,6 +29,15 @@ public class CacheConfig {
         cacheManager.registerCustomCache("opendart_profile",
                 Caffeine.newBuilder().expireAfterWrite(24, TimeUnit.HOURS).maximumSize(1000).buildAsync().synchronous());
 
+        cacheManager.registerCustomCache("kis_stock_sector",
+                Caffeine.newBuilder().expireAfterWrite(24, TimeUnit.HOURS).maximumSize(5000).buildAsync().synchronous());
+
+        cacheManager.registerCustomCache("kis_market_overview",
+                Caffeine.newBuilder().expireAfterWrite(30, TimeUnit.SECONDS).maximumSize(10).buildAsync().synchronous());
+
+        cacheManager.registerCustomCache("alpha_vantage_us_fundamentals",
+                Caffeine.newBuilder().expireAfterWrite(12, TimeUnit.HOURS).maximumSize(1000).buildAsync().synchronous());
+
         return cacheManager;
     }
 }

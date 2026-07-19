@@ -1,6 +1,9 @@
 package com.hermes.broker.summary.application.service;
 
 import com.hermes.broker.market.application.port.out.MarketTradingPort;
+import com.hermes.broker.common.time.TradingTimeService;
+import com.hermes.broker.common.property.TradingProperties;
+import com.hermes.broker.common.exception.DataPipelineUnavailableException;
 import com.hermes.broker.market.dto.PortfolioDto;
 import com.hermes.broker.summary.application.port.in.GenerateDailySummaryUseCase;
 import com.hermes.broker.summary.application.port.out.DailySummaryRepository;
@@ -15,8 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.List;
 
 @Slf4j
@@ -27,23 +28,27 @@ public class DailySummaryService implements GenerateDailySummaryUseCase {
     private final TradingLogRepository tradingLogRepository;
     private final DailySummaryRepository dailySummaryRepository;
     private final List<MarketTradingPort> marketTradingPorts;
+    private final TradingTimeService tradingTimeService;
+    private final TradingProperties tradingProperties;
 
     @Override
     @Transactional
     public void generateDailySummary() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = tradingTimeService.currentMarketDate(com.hermes.broker.trading.domain.MarketType.DOMESTIC);
 
-        if (dailySummaryRepository.findByTradeDate(today).isPresent()) {
+        var marketType = com.hermes.broker.trading.domain.MarketType.DOMESTIC;
+        if (dailySummaryRepository.findByMarketTypeAndTradeDate(marketType, today).isPresent()) {
             log.warn("Daily summary for {} already exists. Skipping...", today);
             return;
         }
 
-        LocalDateTime startOfDay = today.atStartOfDay();
-        LocalDateTime endOfDay = today.atTime(LocalTime.MAX);
+        var tradingDay = tradingTimeService.day(today, tradingTimeService.zoneFor(
+                com.hermes.broker.trading.domain.MarketType.DOMESTIC));
 
         log.info("Starting daily summary generation for {}", today);
 
-        List<TradingLog> logs = tradingLogRepository.findAllByCreatedAtBetweenOrderByCreatedAtAsc(startOfDay, endOfDay);
+        List<TradingLog> logs = tradingLogRepository.findAllByCreatedAtRange(
+                tradingDay.startInclusive(), tradingDay.endExclusive());
 
         StringBuilder reportBuilder = new StringBuilder();
         reportBuilder.append("=== Daily Retrospective Report (").append(today).append(") ===\n");
@@ -61,27 +66,36 @@ public class DailySummaryService implements GenerateDailySummaryUseCase {
 
         BigDecimal closingAsset = BigDecimal.ZERO;
         for (MarketTradingPort port : marketTradingPorts) {
-            try {
-                PortfolioDto portfolio = port.getPortfolio();
-                if (portfolio != null && portfolio.getTotalAsset() != null) {
-                    closingAsset = closingAsset.add(portfolio.getTotalAsset());
-                }
-            } catch (Exception e) {
-                log.error("Failed to fetch portfolio during daily summary. Asset will be recorded as 0 for this port.", e);
+            if (port.supports(com.hermes.broker.trading.domain.MarketType.OVERSEAS)
+                    && (tradingProperties.overseasOrder() == null
+                    || !tradingProperties.overseasOrder().enabled())) {
+                continue;
             }
+            PortfolioDto portfolio = port.getPortfolio();
+            if (portfolio == null || portfolio.getTotalAsset() == null) {
+                throw new IllegalStateException("Portfolio total asset is unavailable; daily summary was not saved.");
+            }
+            closingAsset = closingAsset.add(portfolio.getTotalAsset());
         }
 
-        BigDecimal dailyReturnRate = BigDecimal.ZERO;
-        DailySummary yesterdaySummary = dailySummaryRepository.findByTradeDate(today.minusDays(1)).orElse(null);
-        
-        if (yesterdaySummary != null && yesterdaySummary.getClosingTotalAsset().compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal prevAsset = yesterdaySummary.getClosingTotalAsset();
-            BigDecimal diff = closingAsset.subtract(prevAsset);
-            dailyReturnRate = diff.divide(prevAsset, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+        DailySummary yesterdaySummary = dailySummaryRepository.findLatestBefore(marketType, today)
+                .orElseThrow(() -> new DataPipelineUnavailableException(
+                        "Previous closing-asset baseline is missing; zero return fallback is disabled."
+                ));
+        if (yesterdaySummary.getClosingTotalAsset() == null
+                || yesterdaySummary.getClosingTotalAsset().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new DataPipelineUnavailableException(
+                    "Previous closing-asset baseline is invalid; daily summary was not saved."
+            );
         }
+        BigDecimal prevAsset = yesterdaySummary.getClosingTotalAsset();
+        BigDecimal diff = closingAsset.subtract(prevAsset);
+        BigDecimal dailyReturnRate = diff.divide(prevAsset, 4, RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"));
 
         DailySummary summary = DailySummary.builder()
                 .tradeDate(today)
+                .marketType(marketType)
                 .closingTotalAsset(closingAsset)
                 .dailyReturnRate(dailyReturnRate)
                 .totalTradeCount(logs.size())

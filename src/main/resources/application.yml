@@ -4,6 +4,9 @@ spring:
   profiles:
     active: mock
 
+  jackson:
+    time-zone: UTC
+
   cache:
     type: caffeine
     caffeine:
@@ -24,6 +27,8 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          time_zone: UTC
 
 logging:
   level:
@@ -33,10 +38,22 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,metrics,prometheus,scheduledtasks
   endpoint:
     health:
       show-details: always
+
+broker:
+  monitoring:
+    enabled: ${BROKER_MONITORING_ENABLED:true}
+    context-warning-before: ${MONITOR_CONTEXT_WARNING_BEFORE:1m}
+    news-max-age: ${MONITOR_NEWS_MAX_AGE:24h}
+    watchlist-max-age: ${MONITOR_WATCHLIST_MAX_AGE:15m}
+    overview-max-age: ${MONITOR_OVERVIEW_MAX_AGE:10m}
+    external-failure-alert-window: ${MONITOR_EXTERNAL_FAILURE_WINDOW:15m}
+    reconciliation-failure-alert-window: ${MONITOR_RECONCILIATION_FAILURE_WINDOW:30m}
+    database-failure-alert-window: ${MONITOR_DATABASE_FAILURE_WINDOW:15m}
+    cron-grace: ${MONITOR_CRON_GRACE:5m}
 
 springdoc:
   show-actuator: true
@@ -63,6 +80,27 @@ external-api:
     default-display: ${NAVER_NEWS_DEFAULT_DISPLAY:20}
     max-display: ${NAVER_NEWS_MAX_DISPLAY:100}
     cache-ttl: ${NAVER_NEWS_CACHE_TTL:10m}
+    freshness-threshold: ${NAVER_NEWS_FRESHNESS_THRESHOLD:24h}
+  alpha-vantage:
+    enabled: ${ALPHA_VANTAGE_ENABLED:false}
+    base-url: https://www.alphavantage.co
+    api-key: ${ALPHA_VANTAGE_API_KEY:}
+    connect-timeout: ${ALPHA_VANTAGE_CONNECT_TIMEOUT:3s}
+    read-timeout: ${ALPHA_VANTAGE_READ_TIMEOUT:15s}
+    cache-ttl: ${ALPHA_VANTAGE_CACHE_TTL:12h}
+    freshness-threshold: ${ALPHA_VANTAGE_FRESHNESS_THRESHOLD:24h}
+    earnings-horizon: ${ALPHA_VANTAGE_EARNINGS_HORIZON:3month}
+
+market-data:
+  watchlist:
+    domestic-limit: ${WATCHLIST_DOMESTIC_LIMIT:10}
+    overseas-per-exchange-limit: ${WATCHLIST_OVERSEAS_PER_EXCHANGE_LIMIT:5}
+    max-candidates: ${WATCHLIST_MAX_CANDIDATES:25}
+    min-domestic-volume: ${WATCHLIST_MIN_DOMESTIC_VOLUME:100000}
+  context:
+    overview-freshness: ${MARKET_OVERVIEW_FRESHNESS:5m}
+    max-validity: ${MARKET_CONTEXT_MAX_VALIDITY:5m}
+    history-limit: ${MARKET_CONTEXT_HISTORY_LIMIT:100}
 
 kis:
   rate-limit:
@@ -83,21 +121,35 @@ kis:
     max-size: 100
 
 trading:
+  autonomy-mode: ${AUTONOMY_MODE:ANALYSIS_ONLY}
   real-order:
-    enabled: false
+    enabled: ${REAL_ORDER_ENABLED:false}
   kill-switch:
-    enabled: true
+    enabled: ${ENTRY_KILL_SWITCH_ENABLED:true}
+  overseas-order:
+    enabled: ${OVERSEAS_ORDER_ENABLED:false}
+  admin-reset:
+    enabled: ${ADMIN_RESET_ENABLED:false}
   risk:
+    version: ${RISK_POLICY_VERSION:v1}
     daily-max-loss-rate: ${DAILY_MAX_LOSS_RATE:0.03}
     max-order-amount: ${MAX_ORDER_AMOUNT:100000}
     max-daily-trades: ${MAX_DAILY_TRADES:5}
     max-position-count: ${MAX_POSITION_COUNT:5}
     max-sector-exposure-rate: ${MAX_SECTOR_EXPOSURE_RATE:0.40}
     max-stock-exposure-rate: ${MAX_STOCK_EXPOSURE_RATE:0.25}
+    max-price-deviation-rate: ${MAX_PRICE_DEVIATION_RATE:0.10}
     allow-averaging-down: ${ALLOW_AVERAGING_DOWN:false}
     allow-margin-trading: ${ALLOW_MARGIN_TRADING:false}
     live-trading-enabled: ${LIVE_TRADING_ENABLED:false}
-    kill-switch-enabled: ${KILL_SWITCH_ENABLED:false}
+    require-sector-data: ${REQUIRE_SECTOR_DATA:true}
+    require-daily-loss-data: ${REQUIRE_DAILY_LOSS_DATA:true}
+    overseas:
+      max-order-amount-usd: ${OVERSEAS_MAX_ORDER_AMOUNT_USD:1000}
+      max-daily-trades: ${OVERSEAS_MAX_DAILY_TRADES:5}
+      max-position-count: ${OVERSEAS_MAX_POSITION_COUNT:5}
+      max-stock-exposure-rate: ${OVERSEAS_MAX_STOCK_EXPOSURE_RATE:0.25}
+      allow-averaging-down: ${OVERSEAS_ALLOW_AVERAGING_DOWN:false}
   strategy:
     minimum-trade-sample: ${MINIMUM_TRADE_SAMPLE:20}
     minimum-evaluation-days: ${MINIMUM_EVALUATION_DAYS:10}

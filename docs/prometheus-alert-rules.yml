@@ -1,0 +1,64 @@
+groups:
+  - name: hermes-broker-p1
+    rules:
+      - alert: BrokerCriticalOperationalAlert
+        expr: max(broker_operational_alert_active{severity="critical"}) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Hermes Broker has an active critical operational alert"
+          description: "Inspect /api/v1/internal/operations/status for the alert code and evidence."
+
+      - alert: HermesCronMissed
+        expr: max(broker_operational_alert_active{code="CRON_MISSED"}) == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Hermes Cron heartbeat is overdue"
+
+      - alert: BrokerOrderReconciliationFailed
+        expr: increase(broker_order_reconciliation_total{result="failure"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "KIS order reconciliation failed"
+
+      - alert: BrokerDatabaseMutationFailed
+        expr: increase(broker_database_operations_total{result="failure"}[5m]) > 0 or increase(spring_data_repository_invocations_seconds_count{state="ERROR"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Broker DB save/delete operation failed"
+
+      - alert: BrokerExternalProviderFailure
+        expr: increase(broker_external_calls_total{result="failure"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KIS, Naver, OpenDART or Alpha Vantage call failed"
+
+      - alert: BrokerMarketDataStale
+        expr: max(broker_operational_alert_active{code=~"DATA_STALE_.*|MARKET_CONTEXT_EXPIRED|MARKET_CONTEXT_EXPIRING"}) == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Broker market data or Market Context is stale"
+
+      - alert: BrokerDailyLossLimitReached
+        expr: increase(broker_risk_daily_loss_limit_total{result="reached"}[1d]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Broker daily loss limit was reached"
+
+      - alert: BrokerKillSwitchDisabled
+        expr: broker_kill_switch_enabled == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Broker entry kill switch is disabled"

@@ -17,7 +17,14 @@ public class DailySummaryPersistenceAdapter implements DailySummaryRepository {
     }
 
     @Override
-    public java.util.Optional<DailySummary> findByTradeDate(java.time.LocalDate tradeDate) {
-        return jpaRepository.findByTradeDate(tradeDate);
+    public java.util.Optional<DailySummary> findByMarketTypeAndTradeDate(
+            com.hermes.broker.trading.domain.MarketType marketType, java.time.LocalDate tradeDate) {
+        return jpaRepository.findByMarketTypeAndTradeDate(marketType, tradeDate);
+    }
+
+    @Override
+    public java.util.Optional<DailySummary> findLatestBefore(
+            com.hermes.broker.trading.domain.MarketType marketType, java.time.LocalDate tradeDate) {
+        return jpaRepository.findFirstByMarketTypeAndTradeDateBeforeOrderByTradeDateDesc(marketType, tradeDate);
     }
 }

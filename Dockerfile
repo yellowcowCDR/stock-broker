@@ -1,5 +1,7 @@
 FROM eclipse-temurin:17-jre-alpine
 
+ENV TZ=UTC
+
 # Set the working directory in the container
 WORKDIR /app
 

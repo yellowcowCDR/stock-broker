@@ -1,7 +1,6 @@
 package com.hermes.broker.agent.adapter.in.web;
 
 import com.hermes.broker.trading.domain.MarketType;
-import com.hermes.broker.trading.domain.OrderStatus;
 import com.hermes.broker.trading.domain.TradingLog;
 import com.hermes.broker.market.dto.CurrentPriceDto;
 import com.hermes.broker.trading.dto.OrderRequestDto;
@@ -14,10 +13,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.List;
 
 @Tag(name = "Agent Market API", description = "자동 매매 에이전트 전용 시세 및 주문 API")
@@ -34,14 +31,15 @@ public class AgentApiController {
     @GetMapping("/price")
     public ResponseEntity<CurrentPriceDto> getPrice(
             @RequestParam String stockCode,
-            @RequestParam MarketType marketType) {
+            @RequestParam MarketType marketType,
+            @RequestParam(required = false) String exchangeCode) {
         
-        return ResponseEntity.ok(getMarketPriceUseCase.getPrice(stockCode, marketType));
+        return ResponseEntity.ok(getMarketPriceUseCase.getPrice(stockCode, marketType, exchangeCode));
     }
 
     @Operation(summary = "주식 주문(매수/매도)", description = "에이전트의 판단에 따라 주식 매수 또는 매도 주문을 전송합니다.")
     @PostMapping("/order")
-    public ResponseEntity<OrderResponseDto> placeOrder(@RequestBody OrderRequestDto request) {
+    public ResponseEntity<OrderResponseDto> placeOrder(@Valid @RequestBody OrderRequestDto request) {
         
         OrderResponseDto response = agentTradingUseCase.placeOrder(request);
         return ResponseEntity.ok(response);

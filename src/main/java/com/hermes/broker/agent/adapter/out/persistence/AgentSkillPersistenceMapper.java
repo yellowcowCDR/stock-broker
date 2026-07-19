@@ -10,10 +10,20 @@ public class AgentSkillPersistenceMapper {
         return new AgentSkill(
                 entity.getId(),
                 entity.getCreatedAt(),
+                entity.getStatusChangedAt() != null
+                        ? entity.getStatusChangedAt() : entity.getCreatedAt(),
                 entity.getDescription(),
-                entity.isActive(),
+                entity.getLifecycleStatus() != null
+                        ? entity.getLifecycleStatus()
+                        : (entity.isActive()
+                            ? com.hermes.broker.agent.domain.AgentSkillStatus.ACTIVE
+                            : com.hermes.broker.agent.domain.AgentSkillStatus.ROLLED_BACK),
                 entity.getSkillParameters(),
-                entity.getVersion()
+                entity.getVersion(),
+                entity.getParentVersion(),
+                entity.getShadowEvaluation(),
+                entity.getStatusReason(),
+                entity.getStatusChangedBy()
         );
     }
 
@@ -22,8 +32,14 @@ public class AgentSkillPersistenceMapper {
                 .createdAt(domain.createdAt())
                 .description(domain.description())
                 .isActive(domain.active())
+                .lifecycleStatus(domain.status())
                 .skillParameters(domain.skillParameters())
                 .version(domain.version())
+                .parentVersion(domain.parentVersion())
+                .shadowEvaluation(domain.shadowEvaluation())
+                .statusReason(domain.statusReason())
+                .statusChangedBy(domain.statusChangedBy())
+                .statusChangedAt(domain.statusChangedAt())
                 .build();
     }
 }

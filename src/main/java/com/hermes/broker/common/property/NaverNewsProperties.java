@@ -14,6 +14,7 @@ public record NaverNewsProperties(
         Duration readTimeout,
         int defaultDisplay,
         int maxDisplay,
-        Duration cacheTtl
+        Duration cacheTtl,
+        Duration freshnessThreshold
 ) {
 }

@@ -3,6 +3,8 @@ package com.hermes.broker.market.adapter.in.web;
 import com.hermes.broker.market.application.port.in.MarketFundamentalUseCase;
 import com.hermes.broker.market.application.port.in.MarketIntelligenceUseCase;
 import com.hermes.broker.market.application.port.in.MarketNewsUseCase;
+import com.hermes.broker.market.application.port.in.GetUsFundamentalsUseCase;
+import com.hermes.broker.market.domain.UsFundamentalsSnapshot;
 import com.hermes.broker.market.dto.response.FundamentalsResponseDto;
 import com.hermes.broker.market.dto.response.IntelligenceResponseDto;
 import com.hermes.broker.market.dto.response.NewsResponseDto;
@@ -28,6 +30,7 @@ public class MarketDataController {
     private final MarketNewsUseCase newsUseCase;
     private final MarketIntelligenceUseCase intelligenceUseCase;
     private final MarketTimeValidator marketTimeValidator;
+    private final GetUsFundamentalsUseCase getUsFundamentalsUseCase;
 
     @Operation(summary = "Get Fundamentals", description = "Fetches corporate profile, recent disclosures, and financial statements via OpenDART")
     @GetMapping("/fundamentals")
@@ -37,7 +40,21 @@ public class MarketDataController {
         return ResponseEntity.ok(fundamentalUseCase.getFundamentals(stockCode));
     }
 
-    @Operation(summary = "Get News", description = "Fetches and cleans recent news articles via Naver News API")
+    @Operation(
+            summary = "Get United States Fundamentals",
+            description = "Alpha Vantage company overview, financial statements, earnings history and upcoming earnings calendar with completeness metadata"
+    )
+    @GetMapping("/us-fundamentals")
+    public ResponseEntity<UsFundamentalsSnapshot> getUsFundamentals(
+            @Parameter(description = "United States stock symbol (e.g. AAPL)", required = true)
+            @RequestParam("stockCode") String stockCode) {
+        return ResponseEntity.ok(getUsFundamentalsUseCase.getUsFundamentals(stockCode));
+    }
+
+    @Operation(
+            summary = "Get News",
+            description = "Fetches Naver News API articles and returns source, collection time, completeness, freshness and rule-based analysis metadata"
+    )
     @GetMapping("/news")
     public ResponseEntity<NewsResponseDto> getNews(
             @Parameter(description = "Keyword or Stock code", required = true)

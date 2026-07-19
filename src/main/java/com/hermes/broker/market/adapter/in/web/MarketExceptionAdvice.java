@@ -2,6 +2,7 @@ package com.hermes.broker.market.adapter.in.web;
 
 import com.hermes.broker.common.exception.ExternalApiNotConfiguredException;
 import com.hermes.broker.common.exception.NaverNewsApiException;
+import com.hermes.broker.common.exception.MarketDataUnavailableException;
 import com.hermes.broker.common.exception.OpenDartApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,5 +30,11 @@ public class MarketExceptionAdvice {
     public ResponseEntity<Map<String, String>> handleNaverNewsApi(NaverNewsApiException ex) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(Map.of("error", "Naver News API Error", "message", ex.getMessage()));
+    }
+
+    @ExceptionHandler(MarketDataUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleMarketDataUnavailable(MarketDataUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(Map.of("error", "Real market data unavailable", "message", ex.getMessage()));
     }
 }

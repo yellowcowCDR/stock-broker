@@ -1,8 +1,7 @@
 package com.hermes.broker.market.application.port.out;
 
-import com.hermes.broker.market.domain.StockNewsArticle;
-import java.util.List;
+import com.hermes.broker.market.domain.NewsSearchSnapshot;
 
 public interface NaverNewsSearchPort {
-    List<StockNewsArticle> searchNewsByKeyword(String keyword, int display);
+    NewsSearchSnapshot searchNewsByKeyword(String keyword, int display);
 }

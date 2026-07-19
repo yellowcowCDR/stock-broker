@@ -8,12 +8,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.RestClientResponseException;
 
-import java.time.LocalDateTime;
+import java.time.Clock;
 import java.util.stream.Collectors;
+import org.springframework.dao.DataAccessException;
+import com.hermes.broker.common.monitoring.OperationalEventRecorder;
 
 @Slf4j
 @RestControllerAdvice
@@ -21,6 +24,8 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     private final ObjectMapper objectMapper;
+    private final Clock clock;
+    private final OperationalEventRecorder operationalEventRecorder;
 
     @ExceptionHandler({
             IllegalArgumentException.class,
@@ -42,10 +47,25 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.BAD_REQUEST, message, request.getRequestURI());
     }
 
+    @ExceptionHandler(ServletRequestBindingException.class)
+    public ResponseEntity<ErrorResponse> handleRequestBindingException(
+            ServletRequestBindingException ex,
+            HttpServletRequest request) {
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI());
+    }
+
     @ExceptionHandler(ActiveAgentSkillNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFoundException(Exception ex, HttpServletRequest request) {
         log.warn("Not found error: {}", ex.getMessage());
         return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI());
+    }
+
+    @ExceptionHandler(DataPipelineUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleDataPipelineUnavailable(
+            DataPipelineUnavailableException ex,
+            HttpServletRequest request) {
+        log.error("Required real-data pipeline is unavailable: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), request.getRequestURI());
     }
 
     @ExceptionHandler(RestClientResponseException.class)
@@ -74,6 +94,18 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.BAD_GATEWAY, errorMessage, request.getRequestURI());
     }
 
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<ErrorResponse> handleDatabaseException(
+            DataAccessException ex, HttpServletRequest request) {
+        operationalEventRecorder.recordDatabaseFailure(request.getMethod() + " "
+                + request.getRequestURI(), ex);
+        log.error("Broker database operation failed", ex);
+        return buildErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Broker database operation failed.",
+                request.getRequestURI());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex, HttpServletRequest request) {
         log.error("Unhandled exception occurred", ex);
@@ -82,7 +114,7 @@ public class GlobalExceptionHandler {
 
     private ResponseEntity<ErrorResponse> buildErrorResponse(HttpStatus status, String message, String path) {
         ErrorResponse response = ErrorResponse.builder()
-                .timestamp(LocalDateTime.now())
+                .timestamp(clock.instant())
                 .status(status.value())
                 .error(status.getReasonPhrase())
                 .message(message)

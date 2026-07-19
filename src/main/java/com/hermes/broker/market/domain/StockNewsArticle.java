@@ -1,12 +1,17 @@
 package com.hermes.broker.market.domain;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record StockNewsArticle(
         String title,
         String description,
         String url,
-        LocalDateTime publishedAt,
-        double qualityScore
+        String originalUrl,
+        String source,
+        Instant publishedAt,
+        double qualityScore,
+        double relevanceScore,
+        double sentimentScore,
+        NewsSentiment sentiment
 ) {
 }

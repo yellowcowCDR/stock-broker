@@ -49,7 +49,7 @@ public class KisTokenManager {
     }
 
     // 매일 새벽 5시에 자동 갱신
-    @Scheduled(cron = "0 0 5 * * *")
+    @Scheduled(cron = "0 0 5 * * *", zone = "UTC")
     public void refreshToken() {
         String appKey = kisProperties.api().appKey();
         String appSecret = kisProperties.api().appSecret();

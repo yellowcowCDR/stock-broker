@@ -7,7 +7,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.Instant;
 
 @Slf4j
 @Component
@@ -15,14 +16,15 @@ import java.time.LocalDateTime;
 public class ApiCallLogCleanupScheduler {
 
     private final ApiCallLogRepository apiCallLogRepository;
+    private final Clock clock;
 
     /**
      * 매일 자정(00:00)에 실행되어 1개월이 지난 API 호출 로그를 삭제합니다.
      */
-    @Scheduled(cron = "0 0 0 * * ?")
+    @Scheduled(cron = "0 0 0 * * ?", zone = "UTC")
     @Transactional
     public void cleanupOldApiLogs() {
-        LocalDateTime oneMonthAgo = LocalDateTime.now().minusMonths(1);
+        Instant oneMonthAgo = clock.instant().atZone(java.time.ZoneOffset.UTC).minusMonths(1).toInstant();
         log.info("Starting cleanup for API call logs created before: {}", oneMonthAgo);
 
         try {

@@ -1,17 +1,19 @@
 package com.hermes.broker.trading.adapter.out.persistence;
 
+import com.hermes.broker.trading.domain.MarketType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
 @Entity
-@Table(name = "trading_feature_snapshot")
+@Table(name = "trading_feature_snapshot", uniqueConstraints =
+        @UniqueConstraint(name = "uk_trading_feature_idempotency_ddl", columnNames = "idempotency_key"))
 @Getter
 @Setter
 public class TradingFeatureJpaEntity {
@@ -22,6 +24,10 @@ public class TradingFeatureJpaEntity {
 
     @Column(name = "stock_code", length = 20, nullable = false)
     private String stockCode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "market_type", length = 20)
+    private MarketType marketType;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "technical_features", columnDefinition = "jsonb")
@@ -36,12 +42,15 @@ public class TradingFeatureJpaEntity {
     private Map<String, Object> riskFeatures;
 
     @Column(name = "snapshot_at", nullable = false)
-    private LocalDateTime snapshotAt;
+    private Instant snapshotAt;
+
+    @Column(name = "idempotency_key", length = 160)
+    private String idempotencyKey;
     
     @PrePersist
     protected void onCreate() {
         if (this.snapshotAt == null) {
-            this.snapshotAt = LocalDateTime.now();
+            this.snapshotAt = Instant.now();
         }
     }
 }
