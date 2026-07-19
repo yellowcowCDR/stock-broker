@@ -2,10 +2,10 @@ spring:
   application:
     name: hermes-trading-broker
   profiles:
-    active: mock
+    active: ${SPRING_PROFILES_ACTIVE:mock}
 
   jackson:
-    time-zone: UTC
+    time-zone: ${TZ:UTC}
 
   cache:
     type: caffeine
