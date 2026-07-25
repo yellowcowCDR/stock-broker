@@ -2,10 +2,15 @@ package com.hermes.broker.common.exception;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hermes.broker.common.monitoring.OperationalEventRecorder;
+import com.hermes.broker.common.monitoring.CronHeartbeatService;
+import com.hermes.broker.common.monitoring.adapter.in.web.CronHeartbeatController;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.method.annotation.ExceptionHandlerMethodResolver;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -15,6 +20,11 @@ import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class GlobalExceptionHandlerTest {
 
@@ -47,5 +57,59 @@ class GlobalExceptionHandlerTest {
 
         assertThat(method).isNotNull();
         assertThat(method.getName()).isEqualTo("handleNoResourceFound");
+    }
+
+    @Test
+    void rejectsGetOnPostOnlyHeartbeatEndpointWithMethodNotAllowed() throws Exception {
+        MockMvc mockMvc = heartbeatMockMvc();
+
+        mockMvc.perform(get("/api/v1/internal/operations/cron-heartbeats"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string("Allow", "POST"))
+                .andExpect(jsonPath("$.status").value(405))
+                .andExpect(jsonPath("$.error").value("Method Not Allowed"));
+    }
+
+    @Test
+    void rejectsMalformedJsonWithBadRequest() throws Exception {
+        MockMvc mockMvc = heartbeatMockMvc();
+
+        mockMvc.perform(post("/api/v1/internal/operations/cron-heartbeats")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Malformed request body."));
+    }
+
+    @Test
+    void rejectsMissingContentTypeWithUnsupportedMediaType() throws Exception {
+        MockMvc mockMvc = heartbeatMockMvc();
+
+        mockMvc.perform(post("/api/v1/internal/operations/cron-heartbeats")
+                        .content("""
+                                {
+                                  "cronName": "test",
+                                  "executionId": "run-1",
+                                  "phase": "STARTED",
+                                  "expectedIntervalSeconds": 300
+                                }
+                                """))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.status").value(415))
+                .andExpect(jsonPath("$.message")
+                        .value("Unsupported media type. Set Content-Type to application/json."));
+    }
+
+    private MockMvc heartbeatMockMvc() {
+        Clock clock = Clock.fixed(Instant.parse("2026-07-26T00:00:00Z"), ZoneOffset.UTC);
+        GlobalExceptionHandler handler = new GlobalExceptionHandler(
+                new ObjectMapper(), clock, mock(OperationalEventRecorder.class));
+        CronHeartbeatController controller =
+                new CronHeartbeatController(mock(CronHeartbeatService.class));
+
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(handler)
+                .build();
     }
 }

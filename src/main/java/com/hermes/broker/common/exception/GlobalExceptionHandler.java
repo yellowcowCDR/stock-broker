@@ -5,8 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -107,6 +111,42 @@ public class GlobalExceptionHandler {
                 request.getRequestURI());
     }
 
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex,
+            HttpServletRequest request) {
+        log.warn("Method not supported: {} {}", ex.getMethod(), request.getRequestURI());
+        return buildErrorResponse(
+                HttpStatus.METHOD_NOT_ALLOWED,
+                ex.getMessage(),
+                request.getRequestURI(),
+                ex.getHeaders());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleNotReadable(
+            HttpMessageNotReadableException ex,
+            HttpServletRequest request) {
+        log.warn("Malformed request body for {} {}", request.getMethod(), request.getRequestURI());
+        return buildErrorResponse(
+                HttpStatus.BAD_REQUEST,
+                "Malformed request body.",
+                request.getRequestURI());
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMediaTypeNotSupported(
+            HttpMediaTypeNotSupportedException ex,
+            HttpServletRequest request) {
+        log.warn("Unsupported media type for {} {}: {}",
+                request.getMethod(), request.getRequestURI(), ex.getContentType());
+        return buildErrorResponse(
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "Unsupported media type. Set Content-Type to application/json.",
+                request.getRequestURI(),
+                ex.getHeaders());
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> handleNoResourceFound(
             NoResourceFoundException ex,
@@ -122,6 +162,14 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<ErrorResponse> buildErrorResponse(HttpStatus status, String message, String path) {
+        return buildErrorResponse(status, message, path, HttpHeaders.EMPTY);
+    }
+
+    private ResponseEntity<ErrorResponse> buildErrorResponse(
+            HttpStatus status,
+            String message,
+            String path,
+            HttpHeaders headers) {
         ErrorResponse response = ErrorResponse.builder()
                 .timestamp(clock.instant())
                 .status(status.value())
@@ -129,6 +177,6 @@ public class GlobalExceptionHandler {
                 .message(message)
                 .path(path)
                 .build();
-        return ResponseEntity.status(status).body(response);
+        return ResponseEntity.status(status).headers(headers).body(response);
     }
 }
