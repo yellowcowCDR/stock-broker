@@ -104,6 +104,11 @@ market-data:
     history-limit: ${MARKET_CONTEXT_HISTORY_LIMIT:100}
 
 kis:
+  calendar:
+    enabled: ${KIS_CALENDAR_ENABLED:true}
+    base-url: ${KIS_CALENDAR_BASE_URL:https://openapi.koreainvestment.com:9443}
+    app-key: ${KIS_PROD_APP_KEY:}
+    app-secret: ${KIS_PROD_APP_SECRET:}
   rate-limit:
     enabled: true
     acquire-timeout: 30s

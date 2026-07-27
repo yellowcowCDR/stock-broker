@@ -1,20 +1,22 @@
 package com.hermes.broker.market.application.service;
 
 import com.hermes.broker.common.property.KisProperties;
-import com.hermes.broker.market.adapter.out.external.KisHeaderProvider;
-import com.hermes.broker.market.adapter.out.external.interceptor.KisRestClientInterceptor;
+import com.hermes.broker.market.adapter.out.external.KisDomesticHolidayCalendar;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.client.RestClient;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class MarketTimeValidatorTest {
 
@@ -49,14 +51,56 @@ class MarketTimeValidatorTest {
         assertThrows(IllegalStateException.class, () -> validator.validateMarketOpen("OVERSEAS"));
     }
 
+    @Test
+    void mockEnvironmentUsesProductionHolidayCalendarBeforeAllowingDomesticOrders() {
+        KisProperties kisProperties = mock(KisProperties.class);
+        KisDomesticHolidayCalendar domesticCalendar = mock(KisDomesticHolidayCalendar.class);
+        when(domesticCalendar.sessionFor(any())).thenReturn(
+                new KisDomesticHolidayCalendar.DomesticHolidaySession(true, true, "KIS_OPEN_DAY")
+        );
+        MarketTimeValidator validator = new MarketTimeValidator(
+                kisProperties,
+                Clock.fixed(Instant.parse("2026-07-28T01:00:00Z"), ZoneOffset.UTC),
+                new UsEquityMarketCalendar(),
+                domesticCalendar
+        );
+
+        var status = validator.getMarketStatus("DOMESTIC");
+
+        assertTrue(status.isOpen());
+        assertTrue(status.isComplete());
+        assertEquals("REGULAR_MARKET", status.getStatus());
+        verify(domesticCalendar).sessionFor(LocalDate.of(2026, 7, 28));
+    }
+
+    @Test
+    void unavailableProductionHolidayLookupBlocksDomesticOrdersFailClosed() {
+        KisDomesticHolidayCalendar domesticCalendar = mock(KisDomesticHolidayCalendar.class);
+        when(domesticCalendar.sessionFor(any())).thenReturn(
+                KisDomesticHolidayCalendar.DomesticHolidaySession.unavailable(
+                        "DOMESTIC_HOLIDAY_CALENDAR_LOOKUP_FAILED")
+        );
+        MarketTimeValidator validator = new MarketTimeValidator(
+                mock(KisProperties.class),
+                Clock.fixed(Instant.parse("2026-07-28T01:00:00Z"), ZoneOffset.UTC),
+                new UsEquityMarketCalendar(),
+                domesticCalendar
+        );
+
+        var status = validator.getMarketStatus("DOMESTIC");
+
+        assertFalse(status.isOpen());
+        assertFalse(status.isComplete());
+        assertEquals("CALENDAR_UNAVAILABLE", status.getStatus());
+        assertEquals("DOMESTIC_HOLIDAY_CALENDAR_LOOKUP_FAILED", status.getReason());
+    }
+
     private MarketTimeValidator validatorAt(String instant) {
         return new MarketTimeValidator(
-                mock(RestClient.Builder.class),
-                mock(KisHeaderProvider.class),
                 mock(KisProperties.class),
-                mock(KisRestClientInterceptor.class),
                 Clock.fixed(Instant.parse(instant), ZoneOffset.UTC),
-                new UsEquityMarketCalendar()
+                new UsEquityMarketCalendar(),
+                mock(KisDomesticHolidayCalendar.class)
         );
     }
 }

@@ -20,7 +20,8 @@ import org.springframework.context.annotation.Configuration;
         com.hermes.broker.common.property.MarketWatchlistProperties.class,
         com.hermes.broker.common.property.AlphaVantageProperties.class,
         com.hermes.broker.common.property.OperationalMonitoringProperties.class,
-        com.hermes.broker.common.property.KisProperties.class
+        com.hermes.broker.common.property.KisProperties.class,
+        com.hermes.broker.common.property.KisDomesticCalendarProperties.class
 })
 public class PropertiesConfig {
 }

@@ -1,15 +1,12 @@
 package com.hermes.broker.market.application.service;
 
 import com.hermes.broker.common.property.KisProperties;
-import com.hermes.broker.market.adapter.out.external.KisHeaderProvider;
-import com.hermes.broker.market.adapter.out.external.interceptor.KisRestClientInterceptor;
+import com.hermes.broker.market.adapter.out.external.KisDomesticHolidayCalendar;
 import com.hermes.broker.market.domain.UsEquityMarketSession;
 import com.hermes.broker.market.dto.response.MarketStatusResponseDto;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
 import java.time.Clock;
 import java.time.DayOfWeek;
@@ -18,9 +15,6 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Component
@@ -32,22 +26,10 @@ public class MarketTimeValidator {
     private static final LocalTime DOMESTIC_OPEN = LocalTime.of(9, 0);
     private static final LocalTime DOMESTIC_CLOSE = LocalTime.of(15, 30);
 
-    private final RestClient.Builder restClientBuilder;
-    private final KisHeaderProvider headerProvider;
     private final KisProperties kisProperties;
-    private final KisRestClientInterceptor kisRestClientInterceptor;
     private final Clock clock;
     private final UsEquityMarketCalendar usEquityMarketCalendar;
-
-    private RestClient restClient;
-
-    @PostConstruct
-    public void init() {
-        this.restClient = restClientBuilder
-                .baseUrl(kisProperties.baseUrl())
-                .requestInterceptor(kisRestClientInterceptor)
-                .build();
-    }
+    private final KisDomesticHolidayCalendar domesticHolidayCalendar;
 
     public String getEnvironmentName() {
         return kisProperties.environment().name();
@@ -143,7 +125,7 @@ public class MarketTimeValidator {
                     .status("CLOSED_WEEKEND")
                     .reason("WEEKEND")
                     .complete(true)
-                    .calendarSource("KIS_DOMESTIC_HOLIDAY_API")
+                    .calendarSource(KisDomesticHolidayCalendar.CALENDAR_SOURCE)
                     .build();
         }
         if (time.isBefore(DOMESTIC_OPEN) || !time.isBefore(DOMESTIC_CLOSE)) {
@@ -151,30 +133,31 @@ public class MarketTimeValidator {
                     .status("CLOSED")
                     .reason("OUTSIDE_REGULAR_SESSION")
                     .complete(true)
-                    .calendarSource("KIS_DOMESTIC_HOLIDAY_API")
+                    .calendarSource(KisDomesticHolidayCalendar.CALENDAR_SOURCE)
                     .sessionOpensAt(opensAt)
                     .sessionClosesAt(closesAt)
                     .build();
         }
 
-        if (kisProperties.baseUrl().contains("openapivts")) {
-            log.warn("KIS mock environment does not provide a verified domestic holiday calendar; blocking orders fail-closed.");
+        KisDomesticHolidayCalendar.DomesticHolidaySession holidaySession =
+                domesticHolidayCalendar.sessionFor(marketDate);
+        if (!holidaySession.complete()) {
             return baseStatus("DOMESTIC", checkedAt, marketDate)
                     .status("CALENDAR_UNAVAILABLE")
-                    .reason("DOMESTIC_HOLIDAY_CALENDAR_UNAVAILABLE_IN_MOCK")
+                    .reason(holidaySession.reason())
                     .complete(false)
-                    .calendarSource("KIS_DOMESTIC_HOLIDAY_API")
+                    .calendarSource(KisDomesticHolidayCalendar.CALENDAR_SOURCE)
                     .sessionOpensAt(opensAt)
                     .sessionClosesAt(closesAt)
                     .build();
         }
 
-        if (!isDomesticBusinessDay(marketDate)) {
+        if (!holidaySession.tradingDay()) {
             return baseStatus("DOMESTIC", checkedAt, marketDate)
                     .status("CLOSED_HOLIDAY")
-                    .reason("KIS_NON_BUSINESS_DAY")
+                    .reason(holidaySession.reason())
                     .complete(true)
-                    .calendarSource("KIS_DOMESTIC_HOLIDAY_API")
+                    .calendarSource(KisDomesticHolidayCalendar.CALENDAR_SOURCE)
                     .build();
         }
 
@@ -183,36 +166,10 @@ public class MarketTimeValidator {
                 .status("REGULAR_MARKET")
                 .reason("REGULAR_SESSION")
                 .complete(true)
-                .calendarSource("KIS_DOMESTIC_HOLIDAY_API")
+                .calendarSource(KisDomesticHolidayCalendar.CALENDAR_SOURCE)
                 .sessionOpensAt(opensAt)
                 .sessionClosesAt(closesAt)
                 .build();
-    }
-
-    @SuppressWarnings("unchecked")
-    private boolean isDomesticBusinessDay(LocalDate marketDate) {
-        String date = marketDate.format(DateTimeFormatter.BASIC_ISO_DATE);
-        try {
-            Map<String, Object> response = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/uapi/domestic-stock/v1/quotations/chk-holiday")
-                            .queryParam("BASS_DT", date)
-                            .queryParam("CTX_AREA_NK", "")
-                            .queryParam("CTX_AREA_FK", "")
-                            .build())
-                    .headers(headerProvider.createCommonHeaders("CTCA0903R"))
-                    .retrieve()
-                    .body(Map.class);
-
-            if (response == null || !(response.get("output") instanceof List<?> output) || output.isEmpty()) {
-                throw new IllegalStateException("KIS holiday response is incomplete");
-            }
-            Map<String, String> day = (Map<String, String>) output.get(0);
-            return "Y".equalsIgnoreCase(day.get("bzdy_yn"))
-                    && !"N".equalsIgnoreCase(day.get("opnd_yn"));
-        } catch (Exception e) {
-            throw new IllegalStateException("Cannot verify domestic market holiday", e);
-        }
     }
 
     private MarketStatusResponseDto.MarketStatusResponseDtoBuilder baseStatus(

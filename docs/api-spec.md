@@ -383,7 +383,7 @@ KIS 취소 접수는 최종 취소 완료를 뜻하지 않으며 주문 대사�
 | Endpoint | Query | 기본값/제약 | 데이터 소스와 주의사항 |
 |---|---|---|---|
 | `/market/price` | `stockCode`, `marketType`, `exchangeCode` | 해외는 거래소 필수 | 시장·거래소별 KIS 현재가 |
-| `/market/status` | `marketType` | `DOMESTIC` | 국내 KIS 휴장 확인, 미국 내장 NYSE 캘린더 |
+| `/market/status` | `marketType` | `DOMESTIC` | 국내는 주문 프로필과 별개로 KIS 실전 `CTCA0903R` 휴장 조회, 미국은 내장 NYSE 캘린더 |
 | `/market/fundamentals` | `stockCode` | 국내 6자리 코드 | OpenDART |
 | `/market/us-fundamentals` | `stockCode` | 미국 symbol 1~20자 | Alpha Vantage; 재무 불완전 시 `503` |
 | `/market/news` | `stockCode` | 검색어로 사용 | Naver 뉴스, 중복 제목 제거 |
@@ -420,6 +420,9 @@ KIS 취소 접수는 최종 취소 완료를 뜻하지 않으며 주문 대사�
 | `checkedAt` | instant | 확인 시각 |
 
 `complete=false`이면 주문 API는 fail-closed한다.
+국내 시장은 `mock` 프로필이어도 모의투자 URL 여부만으로 `CALENDAR_UNAVAILABLE`를 반환하지 않는다.
+실전 휴장일 조회 키(`KIS_PROD_APP_KEY`, `KIS_PROD_APP_SECRET`)로 정식 API를 호출하며, 키가 없거나
+호출·응답 검증이 실패한 경우에만 `complete=false`가 된다.
 
 ### 5.4 Watchlist 응답
 

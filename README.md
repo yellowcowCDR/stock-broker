@@ -34,6 +34,9 @@
 `Asia/Seoul` 또는 `America/New_York`으로 변환하며, 미국 DST는 IANA time-zone 규칙으로 자동 반영됩니다.
 미국 휴장일과 조기 폐장일은 NYSE가 게시한 2026–2028 캘린더 범위만 지원하고, 범위 밖 연도는
 `CALENDAR_UNAVAILABLE`로 신규 주문을 fail-closed 차단합니다.
+국내 휴장일은 주문 프로필과 무관하게 KIS 실전 `CTCA0903R` 조회를 사용합니다. 따라서 `mock`
+프로필에서도 모의 주문은 그대로 유지하면서 `KIS_PROD_APP_KEY`와 `KIS_PROD_APP_SECRET`으로
+정식 휴장 여부를 확인합니다.
 
 ## 📂 Project Structure (DDD + Hexagonal)
 ```text
@@ -59,6 +62,11 @@ cp .env.template .env
 실전 계좌로 주문하려면 `prod` 프로필과 실전 KIS 자격 증명을 사용해야 합니다. 어느 프로필에서도
 고정 종목·임의 시세·가짜 뉴스·합성 기술지표를 실데이터 대신 반환하지 않습니다.
 
+KIS 모의투자 서버는 국내 휴장일 조회를 제공하지 않으므로, `mock` 프로필도 휴장일 판정에는
+실전 조회 키가 필요합니다. 키가 없거나 정식 조회가 실패한 경우에만 국내 시장 상태가
+`CALENDAR_UNAVAILABLE`가 되어 주문을 fail-closed 차단합니다. 정상 응답은 거래일별로 캐시하고,
+실패 결과는 1분 후 다시 조회합니다.
+
 ### 시장 후보와 뉴스 실데이터
 
 - `GET /api/v1/broker/market/watchlist`는 KIS 국내 거래대금 순위와 NASDAQ·NYSE·AMEX 거래대금 순위로 후보군을 만듭니다.
@@ -69,6 +77,8 @@ cp .env.template .env
 
 Watchlist는 실시간 KIS 호출이므로 실전 분석 환경에서는 `SPRING_PROFILES_ACTIVE=prod`와
 `KIS_PROD_*` 값을 사용하고, 뉴스에는 `NAVER_CLIENT_ID`와 `NAVER_CLIENT_SECRET`을 반드시 설정합니다.
+국내 휴장일 정식 조회를 위해서는 `mock` 프로필에서도 `KIS_PROD_APP_KEY`와
+`KIS_PROD_APP_SECRET`이 필요합니다.
 템플릿 KIS 키나 `12345678-01` 계좌번호가 남아 있으면 서버 시작 자체가 실패합니다.
 
 아직 실데이터 집계가 완성되지 않은 기능은 값을 꾸며 반환하지 않습니다.
