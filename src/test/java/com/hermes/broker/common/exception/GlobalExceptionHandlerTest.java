@@ -60,6 +60,25 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void mapsCronExecutionConflictToConflictInsteadOfBadRequest() {
+        Clock clock = Clock.fixed(Instant.parse("2026-07-28T00:00:00Z"), ZoneOffset.UTC);
+        GlobalExceptionHandler handler = new GlobalExceptionHandler(
+                new ObjectMapper(), clock, mock(OperationalEventRecorder.class));
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/api/v1/internal/operations/cron-heartbeats");
+
+        var response = handler.handleCronExecutionConflict(
+                new CronExecutionConflictException(
+                        "Another execution is already STARTED for Cron krx-paper-cycle1."),
+                request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getStatus()).isEqualTo(409);
+        assertThat(response.getBody().getError()).isEqualTo("Conflict");
+    }
+
+    @Test
     void rejectsGetOnPostOnlyHeartbeatEndpointWithMethodNotAllowed() throws Exception {
         MockMvc mockMvc = heartbeatMockMvc();
 

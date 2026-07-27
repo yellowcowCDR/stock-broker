@@ -154,11 +154,15 @@ CREATE TABLE IF NOT EXISTS cron_heartbeat (
     expected_interval_seconds BIGINT NOT NULL,
     last_started_at TIMESTAMP WITH TIME ZONE,
     last_completed_at TIMESTAMP WITH TIME ZONE,
+    lease_expires_at TIMESTAMP WITH TIME ZONE,
     expected_next_at TIMESTAMP WITH TIME ZONE NOT NULL,
     message VARCHAR(1000),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
     row_version BIGINT DEFAULT 0
 );
+
+ALTER TABLE IF EXISTS cron_heartbeat
+    ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMP WITH TIME ZONE;
 
 CREATE TABLE IF NOT EXISTS broker_runtime_state (
     state_key VARCHAR(100) PRIMARY KEY,

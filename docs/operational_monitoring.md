@@ -37,6 +37,12 @@ Content-Type: application/json
 `expectedNextAt + MONITOR_CRON_GRACE`까지 새 heartbeat를 보내지 않으면 `CRON_MISSED`가
 발생합니다. 등록되지 않은 이름은 스케줄을 추측하지 않으므로 감시할 수 없습니다.
 
+`STARTED`에는 `MONITOR_CRON_EXECUTION_LEASE`(기본 `30m`)가 적용됩니다. 같은 실행의 동일한
+`STARTED` payload를 lease 만료 전에 다시 보내면 lease가 갱신됩니다. 장기 작업은 10분 간격으로
+갱신하고, 종료 heartbeat는 동일 payload로 재시도해야 합니다. lease가 만료될 때까지 다른 실행은
+`409 Conflict`로 차단되고, 만료 후 새 `STARTED`가 오면 이전 실행을 실패로 기록한 뒤 새 실행이
+인계받습니다. `STARTED`인 채 lease가 만료되면 운영 상태에 `CRON_STUCK`이 발생합니다.
+
 기존 클라이언트는 `expectedNextAt` 대신 `expectedIntervalSeconds`를 보낼 수 있지만, 이 값 역시 명목상
 고정 주기가 아니라 heartbeat 시점부터 실제 다음 슬롯까지 남은 초여야 합니다. 신규 연동은 시간 계산
 오차와 완료 시각 drift를 피하기 위해 `expectedNextAt`을 사용합니다.

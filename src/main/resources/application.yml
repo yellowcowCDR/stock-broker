@@ -54,6 +54,7 @@ broker:
     reconciliation-failure-alert-window: ${MONITOR_RECONCILIATION_FAILURE_WINDOW:30m}
     database-failure-alert-window: ${MONITOR_DATABASE_FAILURE_WINDOW:15m}
     cron-grace: ${MONITOR_CRON_GRACE:5m}
+    cron-execution-lease: ${MONITOR_CRON_EXECUTION_LEASE:30m}
 
 springdoc:
   show-actuator: true

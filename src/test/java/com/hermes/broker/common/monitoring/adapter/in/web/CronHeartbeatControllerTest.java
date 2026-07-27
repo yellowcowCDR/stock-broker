@@ -34,6 +34,7 @@ class CronHeartbeatControllerTest {
                 .willReturn(new CronHeartbeat(
                         "market-analysis", "run-1", CronHeartbeatPhase.STARTED,
                         3600, Instant.parse("2026-07-19T23:00:00Z"), null,
+                        Instant.parse("2026-07-19T23:30:00Z"),
                         nextSlot, "started", Instant.parse("2026-07-19T23:00:00Z")));
         ObjectMapper objectMapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -54,6 +55,8 @@ class CronHeartbeatControllerTest {
                                 }
                                 """))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.leaseExpiresAt")
+                        .value("2026-07-19T23:30:00Z"))
                 .andExpect(jsonPath("$.expectedNextAt").value("2026-07-20T00:00:00Z"));
 
         verify(service).record(

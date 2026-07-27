@@ -868,12 +868,19 @@ Reset confirmation과 실행 권한을 제공하지 않는다.
 | `message` | 선택, 최대 1000자 |
 
 응답 `CronHeartbeat`: `cronName`, `executionId`, `phase`, `expectedIntervalSeconds`, `lastStartedAt`,
-`lastCompletedAt`, `expectedNextAt`, `message`, `updatedAt`.
+`lastCompletedAt`, `leaseExpiresAt`, `expectedNextAt`, `message`, `updatedAt`.
 
 `expectedNextAt`을 보내면 Broker는 이를 그대로 누락 판정 기준으로 저장하고 응답의
 `expectedIntervalSeconds`는 Broker 수신 시각에서 그 슬롯까지 남은 초로 계산한다. 두 필드를 함께 보내면
 `expectedNextAt`이 우선한다. 둘 다 없으면 `400`이다. 같은 실행의 `STARTED`와 완료 heartbeat에는 같은
 절대 `expectedNextAt`을 보내야 완료 시각 때문에 다음 슬롯이 밀리지 않는다.
+
+`STARTED` 실행에는 Broker 수신 시각부터 `MONITOR_CRON_EXECUTION_LEASE`(기본 30분) 동안의 lease가
+부여된다. 같은 `executionId`, `STARTED`, 스케줄, 메시지 payload를 다시 보내면 원래
+`lastStartedAt`은 유지하고 lease만 갱신한다. 30분 이상 실행될 수 있는 작업은 lease의 절반 이내 주기로
+같은 heartbeat를 재전송해야 한다. 활성 lease가 남은 다른 실행의 `STARTED`는 `409 Conflict`이며,
+lease가 만료된 경우에만 새 `STARTED`가 이전 실행을 실패로 기록하고 인계받는다. `SUCCEEDED`와
+`FAILED`는 일시적인 전송 실패에 대비해 동일 payload로 재시도한다.
 
 호환용 `expectedIntervalSeconds`를 사용할 때도 명목상 고정 주기가 아니라 heartbeat 전송 시점부터 실제
 다음 슬롯까지 남은 초를 보내야 한다. 장중 마지막 실행이면 다음 거래일 첫 슬롯, 금요일 마지막 실행이면

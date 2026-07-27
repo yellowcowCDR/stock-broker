@@ -9,6 +9,7 @@ public record CronHeartbeat(
         long expectedIntervalSeconds,
         Instant lastStartedAt,
         Instant lastCompletedAt,
+        Instant leaseExpiresAt,
         Instant expectedNextAt,
         String message,
         Instant updatedAt

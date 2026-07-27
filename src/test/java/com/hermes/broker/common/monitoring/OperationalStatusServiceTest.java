@@ -65,8 +65,8 @@ class OperationalStatusServiceTest {
         recorder.recordDataSnapshot("news", now.minus(Duration.ofHours(25)), true);
         when(heartbeatService.loadAll()).thenReturn(List.of(new CronHeartbeat(
                 "market-analysis", "run-1", CronHeartbeatPhase.SUCCEEDED, 300,
-                now.minusSeconds(700), now.minusSeconds(700), now.minusSeconds(400),
-                null, now.minusSeconds(700))));
+                now.minusSeconds(700), now.minusSeconds(700), null,
+                now.minusSeconds(400), null, now.minusSeconds(700))));
 
         OperationalStatus status = service.getStatus();
 
@@ -94,13 +94,32 @@ class OperationalStatusServiceTest {
         when(heartbeatService.loadAll()).thenReturn(List.of(new CronHeartbeat(
                 "hourly-market-analysis", "friday-last-run", CronHeartbeatPhase.SUCCEEDED,
                 Duration.ofDays(2).toSeconds(), now.minus(Duration.ofDays(1)),
-                now.minus(Duration.ofDays(1)), now.plus(Duration.ofDays(2)),
-                "completed", now.minus(Duration.ofDays(1)))));
+                now.minus(Duration.ofDays(1)), null,
+                now.plus(Duration.ofDays(2)), "completed",
+                now.minus(Duration.ofDays(1)))));
 
         OperationalStatus status = service.getStatus();
 
         assertThat(status.activeAlerts()).extracting(OperationalAlert::code)
                 .doesNotContain("CRON_MISSED");
+    }
+
+    @Test
+    void reportsStartedCronWhoseExecutionLeaseExpired() {
+        when(heartbeatService.loadAll()).thenReturn(List.of(new CronHeartbeat(
+                "krx-paper-cycle1", "stuck-run", CronHeartbeatPhase.STARTED,
+                Duration.ofHours(12).toSeconds(), now.minus(Duration.ofHours(1)),
+                null, now.minus(Duration.ofMinutes(30)),
+                now.plus(Duration.ofHours(11)), "started",
+                now.minus(Duration.ofHours(1)))));
+
+        OperationalStatus status = service.getStatus();
+
+        assertThat(status.activeAlerts()).extracting(OperationalAlert::code)
+                .contains("CRON_STUCK");
+        assertThat(status.activeAlerts())
+                .anyMatch(alert -> alert.code().equals("CRON_STUCK")
+                        && alert.details().get("executionId").equals("stuck-run"));
     }
 
     private MarketContext context(Instant validUntil) {

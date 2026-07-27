@@ -256,13 +256,31 @@ DB에 남습니다. 인증이 없는 현재 구성은 이 loopback/전용 Docker
 `/actuator/prometheus`에서 확인합니다. Hermes Cron은 실행 단계별 heartbeat를
 `POST /api/v1/internal/operations/cron-heartbeats`에 기록해야 누락 감지가 가능합니다.
 heartbeat의 `expectedNextAt`에는 고정 주기가 아니라 주말과 장 마감 경계를 반영한 실제 다음 실행 슬롯의
-UTC 시각을 보내야 합니다.
+UTC 시각을 보내야 합니다. `STARTED` 실행 lease는 기본 30분이며 장기 실행은 동일한 `STARTED`
+payload를 10분 간격으로 다시 보내 lease를 갱신해야 합니다. lease와 종료 heartbeat 세부사항은
+운영 모니터링 문서를 참고합니다.
 전체 설정과 Alertmanager 규칙은 [운영 모니터링 문서](docs/operational_monitoring.md)를 참고합니다.
 
 ### 1. 수동 Docker Compose 배포
 서버에 프로젝트를 클론한 뒤 설정된 `.env` 파일과 함께 백그라운드로 구동합니다.
 ```bash
 docker compose up -d --build
+```
+
+### 로컬 PostgreSQL 통합 테스트
+
+로컬 전용 `src/main/resources/application-local.yml`은 Git에서 제외됩니다. Docker PostgreSQL은
+호스트 `55432` 포트를 사용하므로 기본 PostgreSQL 포트와 충돌하지 않습니다.
+
+```bash
+docker compose -f docker-compose.local.yml up -d postgres
+./gradlew test integrationTest
+```
+
+테스트 DB를 중지할 때는 다음 명령을 사용합니다.
+
+```bash
+docker compose -f docker-compose.local.yml down
 ```
 
 ### 2. 자동 배포 (GitHub Actions CD)

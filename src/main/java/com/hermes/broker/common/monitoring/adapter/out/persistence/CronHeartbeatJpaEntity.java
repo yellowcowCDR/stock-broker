@@ -39,6 +39,9 @@ public class CronHeartbeatJpaEntity {
     @Column(name = "last_completed_at")
     private Instant lastCompletedAt;
 
+    @Column(name = "lease_expires_at")
+    private Instant leaseExpiresAt;
+
     @Column(name = "expected_next_at", nullable = false)
     private Instant expectedNextAt;
 
@@ -65,6 +68,13 @@ public class CronHeartbeatJpaEntity {
     public void apply(String executionId, CronHeartbeatPhase newPhase,
                       long intervalSeconds, Instant nextExpectedAt,
                       String message, Instant receivedAt) {
+        apply(executionId, newPhase, intervalSeconds, nextExpectedAt,
+                null, message, receivedAt);
+    }
+
+    public void apply(String executionId, CronHeartbeatPhase newPhase,
+                      long intervalSeconds, Instant nextExpectedAt,
+                      Instant nextLeaseExpiresAt, String message, Instant receivedAt) {
         if (phase == CronHeartbeatPhase.STARTED
                 && newPhase != CronHeartbeatPhase.STARTED
                 && !this.executionId.equals(executionId)) {
@@ -79,8 +89,18 @@ public class CronHeartbeatJpaEntity {
         } else {
             this.lastCompletedAt = receivedAt;
         }
+        this.leaseExpiresAt = newPhase == CronHeartbeatPhase.STARTED
+                ? nextLeaseExpiresAt : null;
         this.expectedNextAt = nextExpectedAt;
         this.message = message;
+        this.updatedAt = receivedAt;
+    }
+
+    public void renewLease(Instant nextLeaseExpiresAt, Instant receivedAt) {
+        if (phase != CronHeartbeatPhase.STARTED) {
+            throw new IllegalStateException("Only a STARTED Cron execution can renew its lease.");
+        }
+        this.leaseExpiresAt = nextLeaseExpiresAt;
         this.updatedAt = receivedAt;
     }
 }

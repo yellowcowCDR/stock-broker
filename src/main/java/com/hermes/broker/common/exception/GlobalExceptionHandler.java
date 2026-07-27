@@ -73,6 +73,14 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), request.getRequestURI());
     }
 
+    @ExceptionHandler(CronExecutionConflictException.class)
+    public ResponseEntity<ErrorResponse> handleCronExecutionConflict(
+            CronExecutionConflictException ex,
+            HttpServletRequest request) {
+        log.warn("Cron execution conflict: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI());
+    }
+
     @ExceptionHandler(RestClientResponseException.class)
     public ResponseEntity<ErrorResponse> handleRestClientException(RestClientResponseException ex, HttpServletRequest request) {
         String responseBody = ex.getResponseBodyAsString();

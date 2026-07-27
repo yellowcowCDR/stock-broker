@@ -40,6 +40,7 @@ out/
 .env
 .env.*
 !.env.template
+src/main/resources/application-local.yml
 
 ### OS specific ###
 .DS_Store

@@ -21,6 +21,8 @@ configurations {
     compileOnly {
         extendsFrom annotationProcessor
     }
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
 
 repositories {
@@ -57,4 +59,39 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+sourceSets {
+    integrationTest {
+        java.srcDir file('src/integrationTest/java')
+        resources.srcDir file('src/integrationTest/resources')
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+tasks.register('integrationTest', Test) {
+    description = 'Runs integration tests against the Docker PostgreSQL database.'
+    group = 'verification'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    useJUnitPlatform()
+    shouldRunAfter tasks.named('test')
+
+    def localDbUrl = System.getenv('LOCAL_DB_URL')
+            ?: 'jdbc:postgresql://localhost:55432/hermes_local'
+    def localDbUsername = System.getenv('LOCAL_DB_USERNAME') ?: 'hermes'
+    def localDbPassword = System.getenv('LOCAL_DB_PASSWORD') ?: 'hermes_local_password'
+    environment 'LOCAL_DB_URL', localDbUrl
+    environment 'LOCAL_DB_USERNAME', localDbUsername
+    environment 'LOCAL_DB_PASSWORD', localDbPassword
+    environment 'DB_URL', System.getenv('DB_URL') ?: localDbUrl
+    environment 'DB_USERNAME', System.getenv('DB_USERNAME') ?: localDbUsername
+    environment 'DB_PASSWORD', System.getenv('DB_PASSWORD') ?: localDbPassword
+    environment 'KIS_MOCK_APP_KEY',
+            System.getenv('KIS_MOCK_APP_KEY') ?: 'local-integration-app-key'
+    environment 'KIS_MOCK_APP_SECRET',
+            System.getenv('KIS_MOCK_APP_SECRET') ?: 'local-integration-app-secret'
+    environment 'KIS_MOCK_ACCOUNT_NO',
+            System.getenv('KIS_MOCK_ACCOUNT_NO') ?: '00000000-01'
 }

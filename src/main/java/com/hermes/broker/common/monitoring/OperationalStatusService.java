@@ -181,6 +181,13 @@ public class OperationalStatusService {
                         "Hermes Cron reported a failed execution.", now,
                         cronDetails(heartbeat)));
             }
+            if (heartbeat.phase() == CronHeartbeatPhase.STARTED
+                    && heartbeat.leaseExpiresAt() != null
+                    && !now.isBefore(heartbeat.leaseExpiresAt())) {
+                alerts.add(alert("CRON_STUCK", AlertSeverity.CRITICAL,
+                        "Hermes Cron execution lease expired while still STARTED.", now,
+                        cronDetails(heartbeat)));
+            }
             if (heartbeat.expectedNextAt() != null
                     && heartbeat.expectedNextAt().plus(properties.cronGrace()).isBefore(now)) {
                 alerts.add(alert("CRON_MISSED", AlertSeverity.CRITICAL,
@@ -195,7 +202,15 @@ public class OperationalStatusService {
         details.put("cronName", heartbeat.cronName());
         details.put("executionId", heartbeat.executionId());
         details.put("phase", heartbeat.phase());
-        details.put("expectedNextAt", heartbeat.expectedNextAt());
+        if (heartbeat.lastStartedAt() != null) {
+            details.put("lastStartedAt", heartbeat.lastStartedAt());
+        }
+        if (heartbeat.leaseExpiresAt() != null) {
+            details.put("leaseExpiresAt", heartbeat.leaseExpiresAt());
+        }
+        if (heartbeat.expectedNextAt() != null) {
+            details.put("expectedNextAt", heartbeat.expectedNextAt());
+        }
         if (heartbeat.message() != null) details.put("message", heartbeat.message());
         return details;
     }
