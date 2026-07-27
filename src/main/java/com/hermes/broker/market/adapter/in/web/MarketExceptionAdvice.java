@@ -4,6 +4,8 @@ import com.hermes.broker.common.exception.ExternalApiNotConfiguredException;
 import com.hermes.broker.common.exception.NaverNewsApiException;
 import com.hermes.broker.common.exception.MarketDataUnavailableException;
 import com.hermes.broker.common.exception.OpenDartApiException;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.Map;
 
+@Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice(basePackages = "com.hermes.broker.market.adapter.in.web")
 public class MarketExceptionAdvice {
 

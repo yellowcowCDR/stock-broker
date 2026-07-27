@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpRequest;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.ClientHttpResponse;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Component
@@ -28,63 +30,90 @@ public class KisRestClientInterceptor implements ClientHttpRequestInterceptor {
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
         String rateLimitKey = kisProperties.environment().name() + ":" + kisProperties.account().rateLimitKey();
-        
+
         // Order APIs do not retry. Query APIs do retry.
         boolean isQuery = request.getMethod() == HttpMethod.GET;
-        
-        if (!isQuery || !kisProperties.rateLimit().enabled()) {
-            // Apply rate limit directly without retry wrapper if it's an order or rate limit is disabled.
-            // Wait, even if it's an order, we still need rate limiting.
+
+        if (!isQuery) {
             rateLimitCoordinator.acquire(rateLimitKey);
             return execution.execute(request, body);
         }
 
-        // Apply Retry for GET requests
-        Retry retry = createRetryConfig();
-        
+        KisProperties.RetryPolicy queryRetry = kisProperties.retry().query();
+        int maxAttempts = Math.max(1, queryRetry.maxAttempts());
+        Retry retry = createRetryConfig(queryRetry, maxAttempts);
+        AtomicInteger attemptCounter = new AtomicInteger();
+
         try {
             return retry.executeCallable(() -> {
+                int attempt = attemptCounter.incrementAndGet();
                 rateLimitCoordinator.acquire(rateLimitKey);
-                return execution.execute(request, body);
+                ClientHttpResponse response = execution.execute(request, body);
+                HttpStatusCode statusCode;
+                try {
+                    statusCode = response.getStatusCode();
+                } catch (IOException exception) {
+                    response.close();
+                    throw exception;
+                }
+
+                if (attempt < maxAttempts && isRetryableQueryStatus(statusCode)) {
+                    log.warn(
+                            "Retrying KIS query after HTTP {}: method={}, uri={}, attempt={}/{}",
+                            statusCode.value(),
+                            request.getMethod(),
+                            request.getURI(),
+                            attempt,
+                            maxAttempts);
+                    response.close();
+                    throw new RetryableKisQueryException(statusCode);
+                }
+                return response;
             });
         } catch (Exception e) {
-            if (e instanceof IOException) {
-                throw (IOException) e;
+            if (e instanceof IOException ioException) {
+                throw ioException;
             }
-            if (e instanceof RuntimeException) {
-                throw (RuntimeException) e;
+            if (e instanceof RuntimeException runtimeException) {
+                throw runtimeException;
             }
             throw new RuntimeException(e);
         }
     }
 
-    private Retry createRetryConfig() {
-        KisProperties.RetryPolicy queryRetry = kisProperties.retry().query();
-        
+    private boolean isRetryableQueryStatus(HttpStatusCode statusCode) {
+        return statusCode.value() == 429 || statusCode.is5xxServerError();
+    }
+
+    private Retry createRetryConfig(KisProperties.RetryPolicy queryRetry, int maxAttempts) {
         // Resilience4j IntervalFunction with Exponential Backoff and Jitter
-        // Wait time = initialDelay * (multiplier ^ attempt) + random_jitter
-        long initialDelayMs = queryRetry.initialDelay().toMillis();
+        Duration initialDelay = queryRetry.initialDelay();
         double multiplier = queryRetry.multiplier();
-        long maxDelayMs = queryRetry.maxDelay() != null ? queryRetry.maxDelay().toMillis() : Long.MAX_VALUE;
+        Duration maxDelay = queryRetry.maxDelay() != null
+                ? queryRetry.maxDelay()
+                : Duration.ofMillis(Long.MAX_VALUE);
         double jitter = 0.5; // Resilience4j uses a randomizationFactor (e.g. 0.5 means +/- 50%)
-        // The user specifies jitterMin and jitterMax, but resilience4j exponential backoff takes a single randomization factor.
-        // We will approximate it with randomizationFactor 0.5 to keep things simple, or use custom IntervalFunction.
 
         IntervalFunction intervalFunction = IntervalFunction.ofExponentialRandomBackoff(
-                Duration.ofMillis(initialDelayMs),
+                initialDelay,
                 multiplier,
-                jitter
+                jitter,
+                maxDelay
         );
 
         RetryConfig config = RetryConfig.custom()
-                .maxAttempts(queryRetry.maxAttempts())
+                .maxAttempts(maxAttempts)
                 .intervalFunction(intervalFunction)
-                .retryExceptions(IOException.class) // Retry on IO Exceptions (timeouts, connections)
-                // If there are specific HTTP 5xx errors to retry, we would need to inspect the response.
-                // RestClient will throw RestClientException or similar which is a RuntimeException.
-                .retryExceptions(RuntimeException.class)
+                .retryExceptions(IOException.class)
                 .build();
 
         return Retry.of("kisQueryRetry", config);
+    }
+
+    private static final class RetryableKisQueryException extends IOException {
+
+        private RetryableKisQueryException(HttpStatusCode statusCode) {
+            super("Retryable KIS query response: HTTP " + statusCode.value());
+        }
     }
 }
