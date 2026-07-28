@@ -2,6 +2,8 @@ package com.hermes.broker.trading.application.service;
 
 import com.hermes.broker.common.property.RiskPolicyProperties;
 import com.hermes.broker.common.property.OverseasRiskPolicyProperties;
+import com.hermes.broker.common.property.KisEnvironment;
+import com.hermes.broker.common.property.KisProperties;
 import com.hermes.broker.common.time.TradingTimeService;
 import com.hermes.broker.trading.application.port.in.GetPortfolioSummaryUseCase;
 import com.hermes.broker.trading.application.port.in.OrderRiskCommand;
@@ -15,6 +17,7 @@ import com.hermes.broker.trading.domain.portfolio.PortfolioSummary;
 import com.hermes.broker.trading.domain.risk.RiskDecision;
 import com.hermes.broker.trading.domain.risk.RiskEvaluationResult;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -34,12 +37,19 @@ class RiskEvaluationServiceTest {
     private final TradingLogRepository tradingLogRepository = mock(TradingLogRepository.class);
     private final LoadOverseasAccountDataPort overseasAccountDataPort = mock(LoadOverseasAccountDataPort.class);
     private final StockSectorResolver stockSectorResolver = mock(StockSectorResolver.class);
+    private final KisProperties kisProperties = mock(KisProperties.class);
     private final RiskEvaluationService service = new RiskEvaluationService(
             policy(), portfolioUseCase, tradingLogRepository, new TradingTimeService(Clock.systemUTC()),
             overseasAccountDataPort,
             new OverseasRiskPolicyProperties(
                     new BigDecimal("1000"), 5, 5, new BigDecimal("0.25"), false),
+            kisProperties,
             stockSectorResolver);
+
+    @BeforeEach
+    void useProductionKisEnvironmentByDefault() {
+        when(kisProperties.environment()).thenReturn(KisEnvironment.PRODUCTION);
+    }
 
     @Test
     void incompleteDailyLossDataBlocksBuy() {
@@ -127,6 +137,84 @@ class RiskEvaluationServiceTest {
         assertEquals(RiskDecision.ALLOWED, result.decision());
         assertEquals("USD", result.snapshot().get("currency"));
         assertEquals(new BigDecimal("200"), result.snapshot().get("orderAmountUsd"));
+    }
+
+    @Test
+    void mockUsdZeroBalanceUsesSymbolSpecificVirtualOrderCapacity() {
+        Instant now = Instant.parse("2026-07-19T12:00:00Z");
+        when(kisProperties.environment()).thenReturn(KisEnvironment.MOCK);
+        when(overseasAccountDataPort.loadUnitedStatesAccount()).thenReturn(
+                new OverseasAccountSnapshot(
+                        "840", "USD", BigDecimal.ZERO, BigDecimal.ZERO,
+                        List.of(), "KIS_OPEN_API:PRESENT_BALANCE:VTRP6504R", now, true));
+        when(overseasAccountDataPort.loadOrderCapacity("AAPL", "NASD", new BigDecimal("200")))
+                .thenReturn(new OverseasOrderCapacity(
+                        "AAPL", "NASD", "USD", new BigDecimal("200"),
+                        new BigDecimal("100000"), new BigDecimal("100000"),
+                        new BigDecimal("500"), new BigDecimal("500"),
+                        new BigDecimal("1380"), "KIS_OPEN_API:PSAMOUNT:VTTS3007R", now, true));
+
+        RiskEvaluationResult result = service.evaluate(new OrderRiskCommand(
+                "account-key", "AAPL", "NASD", MarketType.OVERSEAS, OrderType.BUY,
+                new BigDecimal("200"), BigDecimal.ONE, "TECHNOLOGY",
+                "context-us", BigDecimal.ONE));
+
+        assertEquals(RiskDecision.ALLOWED, result.decision());
+        assertEquals("KIS_MOCK_ORDER_CAPACITY", result.snapshot().get("overseasBuyingPowerMode"));
+        assertEquals(new BigDecimal("100000"), result.snapshot().get("totalAssetsUsd"));
+        assertEquals(
+                "KIS_MOCK_ORDER_CAPACITY_PLUS_POSITIONS",
+                result.snapshot().get("totalAssetsBasis"));
+    }
+
+    @Test
+    void productionUsdZeroBalanceStillBlocksBuyDespitePositiveOrderCapacity() {
+        Instant now = Instant.parse("2026-07-19T12:00:00Z");
+        when(overseasAccountDataPort.loadUnitedStatesAccount()).thenReturn(
+                new OverseasAccountSnapshot(
+                        "840", "USD", BigDecimal.ZERO, BigDecimal.ZERO,
+                        List.of(), "KIS_OPEN_API:PRESENT_BALANCE:CTRP6504R", now, true));
+        when(overseasAccountDataPort.loadOrderCapacity("AAPL", "NASD", new BigDecimal("200")))
+                .thenReturn(new OverseasOrderCapacity(
+                        "AAPL", "NASD", "USD", new BigDecimal("200"),
+                        new BigDecimal("100000"), new BigDecimal("100000"),
+                        new BigDecimal("500"), new BigDecimal("500"),
+                        new BigDecimal("1380"), "KIS_OPEN_API:PSAMOUNT:TTTS3007R", now, true));
+
+        RiskEvaluationResult result = service.evaluate(new OrderRiskCommand(
+                "account-key", "AAPL", "NASD", MarketType.OVERSEAS, OrderType.BUY,
+                new BigDecimal("200"), BigDecimal.ONE, "TECHNOLOGY",
+                "context-us", BigDecimal.ONE));
+
+        assertFalse(result.allowed());
+        assertEquals(RiskDecision.BLOCKED_BY_INSUFFICIENT_BALANCE, result.decision());
+        assertEquals(
+                "KIS_ACCOUNT_AND_ORDER_CAPACITY",
+                result.snapshot().get("overseasBuyingPowerMode"));
+    }
+
+    @Test
+    void mockBuyAboveVirtualOrderCapacityIsBlocked() {
+        Instant now = Instant.parse("2026-07-19T12:00:00Z");
+        when(kisProperties.environment()).thenReturn(KisEnvironment.MOCK);
+        when(overseasAccountDataPort.loadUnitedStatesAccount()).thenReturn(
+                new OverseasAccountSnapshot(
+                        "840", "USD", BigDecimal.ZERO, BigDecimal.ZERO,
+                        List.of(), "KIS_OPEN_API:PRESENT_BALANCE:VTRP6504R", now, true));
+        when(overseasAccountDataPort.loadOrderCapacity("AAPL", "NASD", new BigDecimal("200")))
+                .thenReturn(new OverseasOrderCapacity(
+                        "AAPL", "NASD", "USD", new BigDecimal("200"),
+                        new BigDecimal("100"), new BigDecimal("100"),
+                        BigDecimal.ZERO, BigDecimal.ZERO,
+                        new BigDecimal("1380"), "KIS_OPEN_API:PSAMOUNT:VTTS3007R", now, true));
+
+        RiskEvaluationResult result = service.evaluate(new OrderRiskCommand(
+                "account-key", "AAPL", "NASD", MarketType.OVERSEAS, OrderType.BUY,
+                new BigDecimal("200"), BigDecimal.ONE, "TECHNOLOGY",
+                "context-us", BigDecimal.ONE));
+
+        assertFalse(result.allowed());
+        assertEquals(RiskDecision.BLOCKED_BY_INSUFFICIENT_BALANCE, result.decision());
     }
 
     @Test

@@ -1,5 +1,9 @@
 # Hermes 자동 주식 매매 설정서
 
+> **사용 중단된 v4 설정서:** 현재 런타임 계약은
+> `skills/stock_trading/SKILL.md`와 그 `references/`만 사용한다. 이 문서의 MODE, 권한,
+> 경로 또는 Cron prompt를 현재 실행에 복사하지 않는다.
+>
 > 주의: 2026-07-19 최신 API 목록에서 Reflection, 성과 평가, Candidate·Shadow·승격·Rollback 및 Cron heartbeat 기능이 추가·완성되었다. 아래 Reflection과 Self-Improvement 절은 신규 POST 요청 스키마를 반영하기 전까지 사용하지 않는다.
 
 ## 1. 확정 구성
@@ -46,13 +50,9 @@ Spring Boot Broker는 시장·계좌·Risk·주문·Feature·Decision·Market Co
 
 ## Broker Base URL
 
-Hermes와 Broker가 같은 Docker 네트워크라면 다음을 사용한다.
-
-`http://stock-broker:8080`
-
-Hermes가 호스트 프로세스 또는 `network_mode: host` 컨테이너라면 다음으로 교체한다.
-
 `http://127.0.0.1:8080`
+
+현재 v5 계약은 실행 위치와 관계없이 이 고정 URL만 허용한다.
 
 Cron Advanced Fields의 Base URL Override에는 Broker URL을 입력하지 않는다. 해당 필드는 LLM Provider용이다.
 
@@ -85,7 +85,7 @@ import urllib.parse
 import urllib.request
 import urllib.error
 
-BASE_URL = "http://stock-broker:8080"  # 배포 방식에 맞게 스킬의 값 사용
+BASE_URL = "http://127.0.0.1:8080"
 
 def broker_request(method, path, query=None, body=None, headers=None):
     if not path.startswith("/api/v1/"):
@@ -192,7 +192,8 @@ def broker_request(method, path, query=None, body=None, headers=None):
 - `KRX_TRADING_CYCLE_1`: `POST /internal/trading/features`, `POST /internal/trading/decisions`,
   `POST /broker/market/order` 허용
 - `KRX_TRADING_CYCLE_2`: Feature·Decision 저장, 국내 SELL 주문과 실제 KRX Paper 미체결 취소 허용
-- US MODE: 모든 POST·PUT 금지
+- `US_MARKET_REGIME_ANALYSIS`: heartbeat와 `POST /internal/trading/market-contexts`만 허용
+- `US_TRADING_CYCLE`: v5 `modes.md`의 조건을 모두 만족한 Feature·Decision·Shadow·미국 Paper 주문만 허용
 - Reflection MODE: `/internal/trading/reflections/run`과 heartbeat만 허용
 - Self-Improvement MODE: Candidate/Shadow lifecycle 및 Shadow decision·settlement·performance 경로만 허용;
   Reset·Risk Policy 변경은 금지

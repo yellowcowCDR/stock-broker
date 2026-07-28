@@ -2,6 +2,8 @@ package com.hermes.broker.trading.application.service;
 
 import com.hermes.broker.common.property.RiskPolicyProperties;
 import com.hermes.broker.common.property.OverseasRiskPolicyProperties;
+import com.hermes.broker.common.property.KisEnvironment;
+import com.hermes.broker.common.property.KisProperties;
 import com.hermes.broker.common.time.TradingTimeService;
 import com.hermes.broker.trading.application.port.in.EvaluateOrderRiskUseCase;
 import com.hermes.broker.trading.application.port.in.GetPortfolioSummaryUseCase;
@@ -41,6 +43,7 @@ public class RiskEvaluationService implements EvaluateOrderRiskUseCase {
     private final TradingTimeService tradingTimeService;
     private final LoadOverseasAccountDataPort loadOverseasAccountDataPort;
     private final OverseasRiskPolicyProperties overseasProperties;
+    private final KisProperties kisProperties;
     private final com.hermes.broker.market.application.service.StockSectorResolver stockSectorResolver;
 
     @Override
@@ -293,7 +296,13 @@ public class RiskEvaluationService implements EvaluateOrderRiskUseCase {
         snapshot.put("orderableForeignAmountUsd", capacity.orderableForeignAmount());
         snapshot.put("orderableQuantity", capacity.orderableQuantity());
         snapshot.put("maximumOrderableQuantity", capacity.maximumOrderableQuantity());
-        if (orderAmount.compareTo(account.availableForUse()) > 0
+        boolean mockEnvironment = kisProperties.environment() == KisEnvironment.MOCK;
+        snapshot.put("overseasBuyingPowerMode", mockEnvironment
+                ? "KIS_MOCK_ORDER_CAPACITY"
+                : "KIS_ACCOUNT_AND_ORDER_CAPACITY");
+        boolean accountBalanceInsufficient = !mockEnvironment
+                && orderAmount.compareTo(account.availableForUse()) > 0;
+        if (accountBalanceInsufficient
                 || orderAmount.compareTo(capacity.orderableForeignAmount()) > 0
                 || command.quantity().compareTo(capacity.orderableQuantity()) > 0
                 || command.quantity().compareTo(capacity.maximumOrderableQuantity()) > 0) {
@@ -312,10 +321,16 @@ public class RiskEvaluationService implements EvaluateOrderRiskUseCase {
             return blocked(RiskDecision.BLOCKED_BY_AVERAGING_DOWN, reasons, snapshot);
         }
 
-        BigDecimal totalAssetsUsd = account.cashBalance().add(account.positions().stream()
+        BigDecimal positionEvaluationAmount = account.positions().stream()
                 .map(OverseasPosition::evaluationAmount)
                 .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add));
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalAssetsUsd = (mockEnvironment
+                ? capacity.orderableForeignAmount()
+                : account.cashBalance()).add(positionEvaluationAmount);
+        snapshot.put("totalAssetsBasis", mockEnvironment
+                ? "KIS_MOCK_ORDER_CAPACITY_PLUS_POSITIONS"
+                : "USD_CASH_BALANCE_PLUS_POSITIONS");
         if (totalAssetsUsd.signum() <= 0) {
             reasons.add("USD total asset amount is unavailable or non-positive.");
             return blocked(RiskDecision.BLOCKED_BY_INCOMPLETE_RISK_DATA, reasons, snapshot);
