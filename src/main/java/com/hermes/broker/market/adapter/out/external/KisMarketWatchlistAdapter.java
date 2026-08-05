@@ -1,5 +1,6 @@
 package com.hermes.broker.market.adapter.out.external;
 
+import com.hermes.broker.common.exception.MarketDataParsingException;
 import com.hermes.broker.common.exception.MarketDataUnavailableException;
 import com.hermes.broker.common.property.KisProperties;
 import com.hermes.broker.common.property.MarketWatchlistProperties;
@@ -18,6 +19,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -69,7 +71,15 @@ public class KisMarketWatchlistAdapter implements LoadMarketWatchlistPort {
                     .limit(positive(properties.maxCandidates(), 25))
                     .toList();
             if (selected.isEmpty()) {
-                throw new MarketDataUnavailableException("KIS ranking APIs returned no orderable candidates.");
+                log.info("KIS ranking APIs returned no orderable candidates.");
+                return new MarketWatchlistResult(
+                        Collections.emptyList(),
+                        "KIS_OPEN_API:DOMESTIC_VOLUME_RANK+US_TRADE_AMOUNT_RANK",
+                        clock.instant(),
+                        true,
+                        "EMPTY",
+                        true
+                );
             }
 
             return new MarketWatchlistResult(
@@ -119,7 +129,8 @@ public class KisMarketWatchlistAdapter implements LoadMarketWatchlistPort {
             }
         }
         if (result.isEmpty()) {
-            throw new MarketDataUnavailableException("KIS domestic ranking returned no usable common stocks.");
+            log.info("KIS domestic ranking returned no usable common stocks.");
+            return Collections.emptyList();
         }
         return result;
     }
@@ -151,7 +162,8 @@ public class KisMarketWatchlistAdapter implements LoadMarketWatchlistPort {
             }
         }
         if (result.isEmpty()) {
-            throw new MarketDataUnavailableException("KIS " + exchange + " ranking returned no orderable stocks.");
+            log.info("KIS {} ranking returned no orderable stocks.", exchange);
+            return Collections.emptyList();
         }
         return result;
     }
@@ -257,14 +269,14 @@ public class KisMarketWatchlistAdapter implements LoadMarketWatchlistPort {
         try {
             return new BigDecimal(value.replace(",", "").trim());
         } catch (NumberFormatException e) {
-            throw new MarketDataUnavailableException("KIS ranking field is not numeric: " + key, e);
+            throw new MarketDataParsingException("KIS ranking field is not numeric: " + key, e);
         }
     }
 
     private static String requiredText(Map<String, String> row, String key) {
         String value = text(row, key);
         if (value.isBlank()) {
-            throw new MarketDataUnavailableException("KIS ranking response is missing field: " + key);
+            throw new MarketDataParsingException("KIS ranking response is missing field: " + key);
         }
         return value;
     }
@@ -274,7 +286,7 @@ public class KisMarketWatchlistAdapter implements LoadMarketWatchlistPort {
         try {
             return Integer.parseInt(value);
         } catch (NumberFormatException e) {
-            throw new MarketDataUnavailableException("KIS ranking field is not an integer: " + key, e);
+            throw new MarketDataParsingException("KIS ranking field is not an integer: " + key, e);
         }
     }
 
